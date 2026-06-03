@@ -1,40 +1,53 @@
-# mcp-guard — MCP Server Security Scanner
+# mcp-guard — Adversarial Fuzzer for MCP Servers
 
 ## Spec
 
-CLI + library that audits MCP (Model Context Protocol) server endpoints against OWASP Agentic Top 10 security risks.
+CLI + library that **dynamically fuzzes** MCP (Model Context Protocol) servers by sending adversarial inputs to exposed tools, detecting crashes, information leakage, and unexpected behavior.
+
+**Differentiation:** microsoft/agent-governance-toolkit does static policy checks ("does this tool declaration look safe?"). mcp-guard does dynamic adversarial testing ("what happens when I ACTUALLY SEND this payload?").
 
 ### Core Behavior
-1. Connect to an MCP server via stdio or SSE transport
-2. Enumerate exposed tools, resources, and prompts
-3. Run a suite of security checks against each
-4. Produce a scored report (pass/warn/fail) with remediation advice
+1. Spawn/connect to an MCP server via stdio transport
+2. Perform MCP handshake, enumerate tools/resources/prompts
+3. Generate adversarial payloads per tool based on its schema
+4. Fire payloads at each tool, monitor responses
+5. Detect: crashes, error leakage, unexpected success, timeouts
+6. Produce scored report with findings + reproduction steps
 
-### Security Checks (v1)
-- **Tool injection**: Detect tools that accept executable code or shell commands
-- **SSRF surface**: Flag tools that take URLs or network addresses as parameters
-- **Private network exposure**: Test if server exposes internal network access
-- **Capability sprawl**: Warn when a server exposes >10 tools (attack surface)
-- **Missing input validation**: Detect tools with no schema or type constraints
-- **Excessive permissions**: Flag tools that claim filesystem or env access
-- **Prompt injection vectors**: Scan prompt templates for unescaped user input
-- **Resource leakage**: Detect resources that expose credentials, .env, or secrets
-- **Transport security**: Verify SSE endpoints use TLS
-- **Auth surface**: Report whether server requires authentication
+### Fuzz Probes (v1)
+
+| Probe | What It Sends | What It Detects |
+|-------|--------------|-----------------|
+| **shell_injection** | `; rm -rf /`, `$(whoami)`, backtick expressions | Command execution surface |
+| **ssrf** | `http://169.254.169.254/`, `http://localhost:22`, `file:///etc/passwd` | Internal network access |
+| **overflow** | 100KB strings, deeply nested JSON, huge arrays | Buffer overflows, memory leaks |
+| **type_confusion** | String where int expected, arrays for scalars, null for required | Missing validation |
+| **prompt_injection** | "Ignore previous instructions...", system prompt extractions | Prompt leakage, instruction override |
+
+### Payload Intelligence
+- Payloads are **schema-aware**: read tool inputSchema, generate targeted payloads per parameter type
+- String params get injection/overflow payloads
+- URI params get SSRF payloads
+- No-schema tools get the full payload suite
+- Each payload has a severity and expected-failure pattern
+
+### Transport (v1)
+- **stdio**: spawn server as subprocess, communicate via stdin/stdout JSON-RPC
+- Future: SSE, streamable HTTP
 
 ### Output Formats
-- CLI table (default)
-- JSON (for CI)
+- CLI table (default) — colored, readable
+- JSON (for CI integration)
 - SARIF (for GitHub Security tab)
 
 ## PREMORTEM — 5 Failure Modes
 
-1. **MCP server crashes during scan**: Aggressive probing kills the target. Mitigation: rate-limit tool calls, add per-check timeout, graceful disconnect.
+1. **Server crashes kill the fuzzer**: A payload crashes the MCP server process, fuzzer loses transport. Mitigation: detect process exit, respawn server between probe groups, track crash-causing payloads.
 
-2. **False positives on legitimate tools**: A dev tool legitimately runs shell commands. Mitigation: severity scoring (critical/warning/info), allowlist via config file, context-aware heuristics.
+2. **Rate limiting / server throttling**: Aggressive fuzzing triggers rate limits or intentional slowdowns. Mitigation: configurable delay between payloads (`--delay-ms`), adaptive throttling based on response times.
 
-3. **Transport incompatibility**: MCP servers use stdio, SSE, or streamable HTTP — missing one breaks adoption. Mitigation: implement all three transports from day one, use official MCP SDK.
+3. **False positives from expected errors**: A tool correctly rejects bad input with a 400 error — fuzzer flags it as a finding. Mitigation: classify responses: expected errors (safe) vs. unexpected errors (finding) vs. crashes (critical). Only flag the latter two.
 
-4. **OWASP mapping drift**: OWASP Agentic Top 10 evolves between releases. Mitigation: decouple check definitions from OWASP version, use a rules engine with versioned rule sets.
+4. **Non-deterministic results**: Same payload, different results across runs (server has state). Mitigation: seed-based payload ordering, state reset between probe groups, document non-determinism in report.
 
-5. **CI pipeline timeout**: Large MCP servers with many tools take too long in CI. Mitigation: `--max-time` flag, incremental scanning, cache results for unchanged tool schemas.
+5. **MCP protocol version drift**: Protocol spec evolves, handshake changes. Mitigation: implement against current spec, version-pin the protocol constants, fail gracefully on unknown message types.
