@@ -60,14 +60,37 @@ class StdioTransport:
         self._proc.stdin.write(line)
         self._proc.stdin.flush()
 
-        response_line = self._proc.stdout.readline()
-        if not response_line:
-            raise ConnectionError("Server closed connection")
+        return self._read_response()
 
-        response = json.loads(response_line)
-        if "error" in response:
-            raise RuntimeError(f"MCP error: {response['error']}")
-        return response.get("result", {})
+    def _notify(self, method: str, params: dict | None = None) -> None:
+        if not self._proc or not self.is_alive:
+            raise ConnectionError("Server not running")
+
+        notification: dict[str, Any] = {
+            "jsonrpc": "2.0",
+            "method": method,
+        }
+        if params is not None:
+            notification["params"] = params
+
+        line = json.dumps(notification) + "\n"
+        self._proc.stdin.write(line)
+        self._proc.stdin.flush()
+
+    def _read_response(self) -> dict:
+        while True:
+            response_line = self._proc.stdout.readline()
+            if not response_line:
+                raise ConnectionError("Server closed connection")
+            try:
+                response = json.loads(response_line)
+            except json.JSONDecodeError:
+                continue
+            if "method" in response and "id" not in response:
+                continue
+            if "error" in response:
+                raise RuntimeError(f"MCP error: {response['error']}")
+            return response.get("result", {})
 
     def _initialize(self) -> dict:
         result = self._send("initialize", {
@@ -75,7 +98,7 @@ class StdioTransport:
             "capabilities": {},
             "clientInfo": {"name": "mcp-guard", "version": "0.2.0"},
         })
-        self._send("notifications/initialized")
+        self._notify("notifications/initialized")
         return result
 
     def list_tools(self) -> list[dict]:
