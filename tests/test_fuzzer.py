@@ -83,6 +83,60 @@ def test_fuzzer_classifies_expected_errors_as_safe():
     assert len(findings) == 0, "Expected errors should be classified as SAFE"
 
 
+def test_normal_response_is_accepted_not_finding():
+    """A plain non-error response is NOT a vulnerability — it must be ACCEPTED, not FINDING.
+
+    This is the core honesty guarantee: a tool returning its normal output when
+    handed an adversarial string has not been exploited.
+    """
+    transport = FakeTransport()  # default: returns {"content": [{"text": "ok"}]}, no isError
+    engine = FuzzEngine(transport=transport)
+
+    tool = {
+        "name": "search_nodes",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+    }
+
+    results = engine.fuzz_tool(tool)
+    assert len(results) > 0
+    assert all(r.category != ResultCategory.FINDING for r in results), (
+        "A normal response must never be reported as a FINDING"
+    )
+    assert any(r.category == ResultCategory.ACCEPTED for r in results)
+
+
+def test_response_leaking_etc_passwd_is_a_finding():
+    """Concrete evidence (a leaked /etc/passwd) must escalate to a FINDING."""
+    leak = "root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin"
+    transport = FakeTransport(responses={})
+
+    # Force every call to return the leak.
+    def leaking_call(tool_name, arguments):
+        transport.calls.append({"tool": tool_name, "arguments": arguments})
+        return {"content": [{"type": "text", "text": leak}]}
+
+    transport.call_tool = leaking_call
+    engine = FuzzEngine(transport=transport)
+
+    tool = {
+        "name": "read_file",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+    }
+
+    results = engine.fuzz_tool(tool)
+    findings = [r for r in results if r.category == ResultCategory.FINDING]
+    assert len(findings) > 0, "A leaked /etc/passwd must be reported as a FINDING"
+    assert all(r.severity == "high" for r in findings)
+
+
 def test_fuzz_result_has_reproduction_info():
     """Every FuzzResult must include enough info to reproduce."""
     transport = FakeTransport()

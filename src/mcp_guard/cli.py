@@ -4,7 +4,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .fuzzer import FuzzEngine, ResultCategory
+from . import __version__
+from .fuzzer import FuzzEngine
 from .report import FuzzReport
 from .scanner import Scanner
 from .transport import StdioTransport
@@ -15,6 +16,7 @@ def main(argv: list[str] | None = None) -> None:
         prog="mcp-guard",
         description="Adversarial fuzzer for MCP servers — break before they break you.",
     )
+    parser.add_argument("--version", action="version", version=f"mcp-guard {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     # fuzz subcommand
@@ -46,21 +48,21 @@ def _run_fuzz(args: argparse.Namespace) -> None:
         print("Usage: mcp-guard fuzz -- npx @modelcontextprotocol/server-memory", file=sys.stderr)
         sys.exit(1)
 
-    print(f"[*] Starting MCP server: {' '.join(cmd)}")
+    print(f"[*] Starting MCP server: {' '.join(cmd)}", file=sys.stderr)
     try:
         with StdioTransport(cmd, timeout=args.timeout) as transport:
-            print("[*] Connected. Enumerating tools...")
+            print("[*] Connected. Enumerating tools...", file=sys.stderr)
             tools = transport.list_tools()
             if not tools:
-                print("[!] No tools found on this server.")
+                print("[!] No tools found on this server.", file=sys.stderr)
                 return
 
-            print(f"[*] Found {len(tools)} tools. Generating payloads...")
+            print(f"[*] Found {len(tools)} tools. Generating payloads...", file=sys.stderr)
             all_results = []
             engine = FuzzEngine(transport=transport, delay_ms=args.delay_ms)
             for tool in tools:
                 name = tool.get("name", "unknown")
-                print(f"[*] Fuzzing: {name}...")
+                print(f"[*] Fuzzing: {name}...", file=sys.stderr)
                 results = engine.fuzz_tool(tool)
                 all_results.extend(results)
 

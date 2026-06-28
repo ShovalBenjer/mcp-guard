@@ -12,4 +12,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
-      - run: pytest tests/ -v --tb=short
+      - name: Lint (ruff)
+        run: ruff check src/ tests/
+      - name: Type check (mypy)
+        run: mypy src/mcp_guard
+      - name: Tests
+        run: pytest tests/ -v --tb=short

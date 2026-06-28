@@ -6,6 +6,7 @@ import sys
 from dataclasses import dataclass
 from typing import TextIO
 
+from . import __version__
 from .fuzzer import FuzzResult, ResultCategory
 
 
@@ -25,6 +26,10 @@ class FuzzReport:
         return [r for r in self.results if r.category == ResultCategory.FINDING]
 
     @property
+    def accepted(self) -> list[FuzzResult]:
+        return [r for r in self.results if r.category == ResultCategory.ACCEPTED]
+
+    @property
     def safe(self) -> list[FuzzResult]:
         return [r for r in self.results if r.category == ResultCategory.SAFE]
 
@@ -36,8 +41,9 @@ class FuzzReport:
         out.write(f"  Tools fuzzed:  {self.tools_fuzzed}\n")
         out.write(f"  Payloads sent: {self.total_payloads}\n")
         out.write(f"  Crashes:       {len(self.crashes)}\n")
-        out.write(f"  Findings:      {len(self.findings)}\n")
-        out.write(f"  Safe:          {len(self.safe)}\n\n")
+        out.write(f"  Findings:      {len(self.findings)}   (accepted + concrete evidence of harm)\n")
+        out.write(f"  Accepted:      {len(self.accepted)}   (no validation, no evidence of harm)\n")
+        out.write(f"  Rejected:      {len(self.safe)}   (server returned an error)\n\n")
 
         if self.crashes:
             out.write(f"  {'CRASHES':^68}\n")
@@ -55,19 +61,23 @@ class FuzzReport:
                 out.write(f"         payload: {str(r.payload_value)[:60]}\n")
                 if r.response_preview:
                     out.write(f"         response: {r.response_preview[:60]}\n")
-                out.write("")
-
-        remaining = len(self.findings) - 20
-        if remaining > 0:
-            out.write(f"  ... and {remaining} more findings\n")
+                out.write("\n")
+            remaining = len(self.findings) - 20
+            if remaining > 0:
+                out.write(f"  ... and {remaining} more findings\n")
 
         out.write(f"\n{'='*72}\n")
         if self.crashes:
-            out.write("  VERDICT: VULNERABLE — crashes detected\n")
+            out.write("  VERDICT: VULNERABLE — server crashed on adversarial input\n")
         elif self.findings:
-            out.write(f"  VERDICT: {len(self.findings)} findings require investigation\n")
+            out.write(f"  VERDICT: {len(self.findings)} finding(s) with concrete evidence — investigate\n")
+        elif self.accepted:
+            out.write(
+                f"  VERDICT: no confirmed vulnerabilities. {len(self.accepted)} payload(s) "
+                "accepted\n           without validation — review input handling.\n"
+            )
         else:
-            out.write("  VERDICT: CLEAN — all payloads handled safely\n")
+            out.write("  VERDICT: CLEAN — every adversarial payload was rejected\n")
         out.write(f"{'='*72}\n\n")
 
     def to_json(self, out: TextIO | None = None) -> None:
@@ -79,6 +89,7 @@ class FuzzReport:
                 "total_payloads": self.total_payloads,
                 "crashes": len(self.crashes),
                 "findings": len(self.findings),
+                "accepted": len(self.accepted),
                 "safe": len(self.safe),
             },
             "results": [
@@ -96,7 +107,7 @@ class FuzzReport:
                 if r.category != ResultCategory.SAFE
             ],
         }
-        out.write(json.dumps(data, indent=2, ensure_ascii=False))
+        out.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
     def to_sarif(self, out: TextIO | None = None) -> None:
         out = out or sys.stdout
@@ -112,7 +123,12 @@ class FuzzReport:
                 rules_map[r.rule_id] = idx
                 rules_list.append({"id": r.rule_id, "shortDescription": {"text": r.rule_id}})
 
-            sarif_level = "error" if r.category == ResultCategory.CRASH else "warning"
+            if r.category == ResultCategory.CRASH:
+                sarif_level = "error"
+            elif r.category == ResultCategory.FINDING:
+                sarif_level = "warning"
+            else:  # ACCEPTED — informational, not a confirmed issue
+                sarif_level = "note"
             results_sarif.append({
                 "ruleId": r.rule_id,
                 "ruleIndex": rules_map[r.rule_id] - 1,
@@ -125,8 +141,8 @@ class FuzzReport:
             "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
             "version": "2.1.0",
             "runs": [{
-                "tool": {"driver": {"name": "mcp-guard", "version": "0.2.0", "rules": rules_list}},
+                "tool": {"driver": {"name": "mcp-guard", "version": __version__, "rules": rules_list}},
                 "results": results_sarif,
             }],
         }
-        out.write(json.dumps(sarif, indent=2, ensure_ascii=False))
+        out.write(json.dumps(sarif, indent=2, ensure_ascii=False) + "\n")

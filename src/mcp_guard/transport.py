@@ -5,6 +5,8 @@ import json
 import subprocess
 from typing import Any
 
+from . import __version__
+
 
 class StdioTransport:
     def __init__(self, command: list[str], timeout: float = 10.0):
@@ -56,6 +58,7 @@ class StdioTransport:
         if params is not None:
             request["params"] = params
 
+        assert self._proc is not None and self._proc.stdin is not None
         line = json.dumps(request) + "\n"
         self._proc.stdin.write(line)
         self._proc.stdin.flush()
@@ -73,11 +76,14 @@ class StdioTransport:
         if params is not None:
             notification["params"] = params
 
+        assert self._proc is not None and self._proc.stdin is not None
         line = json.dumps(notification) + "\n"
         self._proc.stdin.write(line)
         self._proc.stdin.flush()
 
     def _read_response(self) -> dict:
+        if self._proc is None or self._proc.stdout is None:
+            raise ConnectionError("Server not running")
         while True:
             response_line = self._proc.stdout.readline()
             if not response_line:
@@ -96,7 +102,7 @@ class StdioTransport:
         result = self._send("initialize", {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "mcp-guard", "version": "0.2.0"},
+            "clientInfo": {"name": "mcp-guard", "version": __version__},
         })
         self._notify("notifications/initialized")
         return result
