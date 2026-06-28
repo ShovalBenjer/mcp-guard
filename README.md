@@ -190,11 +190,14 @@ Zero external dependencies. Python 3.11+ stdlib only.
 
 ## Roadmap
 
+The full plan — requirements, milestones, and success metrics — lives in the [Product Requirements Document](docs/PRD.md). Near-term highlights:
+
 - [ ] SSE + streamable HTTP transports
-- [ ] MCP server security leaderboard (community submissions)
-- [ ] Custom payloads via YAML config
+- [ ] Safe mode + authorization gate for third-party targets
+- [ ] Custom payloads via config
 - [ ] GitHub Action (fuzz on every PR)
 - [ ] Diff mode: compare fuzz results between server versions
+- [ ] MCP server security leaderboard (community submissions)
 
 ## License
 
