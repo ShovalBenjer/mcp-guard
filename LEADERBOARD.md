@@ -2,8 +2,8 @@
 
 Results from running [mcp-guard](https://github.com/ShovalBenjer/mcp-guard) against popular MCP servers.
 
-**Last updated: 2026-06-27**
-**mcp-guard version: 0.2.1**
+**Last updated: 2026-06-28**
+**mcp-guard version: 0.3.0**
 
 > **Reading the table:** a *finding* means a payload was accepted **and** the response showed concrete evidence of a leak. *Accepted* means the server returned a normal response with no evidence of harm — informational (missing input validation), not a confirmed vulnerability. *Rejected* means the server correctly errored. See [How to Read Results](README.md#how-to-read-results). The exit code is non-zero only on crashes.
 
@@ -45,7 +45,7 @@ Each server was:
 ## Want your server tested?
 
 ```bash
-pip install -e ".[dev]"  # from repo
+cargo install --git https://github.com/ShovalBenjer/mcp-guard
 mkdir -p /tmp/sandbox
 mcp-guard fuzz -- npx -y @your-org/your-mcp-server
 ```

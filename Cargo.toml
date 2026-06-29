@@ -1,0 +1,48 @@
+[package]
+name = "mcp-guard"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Adversarial fuzzer for MCP servers — send real payloads and classify the responses"
+license = "MIT"
+repository = "https://github.com/ShovalBenjer/mcp-guard"
+readme = "README.md"
+keywords = ["mcp", "security", "fuzzer", "fuzzing", "ai"]
+categories = ["command-line-utilities", "development-tools::testing"]
+
+[[bin]]
+name = "mcp-guard"
+path = "src/main.rs"
+
+[lib]
+name = "mcp_guard"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"
+serde_yaml = { version = "0.9", optional = true }
+
+[features]
+default = []
+# Opt-in YAML config support. The default install stays lean (JSON config only).
+yaml = ["dep:serde_yaml"]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Pragmatic allows for an idiomatic but un-noisy build.
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+[profile.release]
+strip = true
+lto = "thin"

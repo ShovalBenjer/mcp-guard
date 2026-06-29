@@ -4,11 +4,16 @@
 |---|---|
 | **Product** | mcp-guard — adversarial fuzzer for MCP servers |
 | **Status** | Draft for review |
-| **Doc version** | 1.0 |
+| **Doc version** | 1.1 |
 | **Last updated** | 2026-06-28 |
 | **Owner** | Shoval Benjer |
-| **Current release** | v0.2.1 |
+| **Implementation** | Rust (edition 2024, MSRV 1.85) — ported from the Python prototype in v0.3.0 |
+| **Current release** | v0.3.0 |
 | **Target** | v1.0 (general availability) |
+
+### Resolved decisions
+- **Q3 (config dependency)** — *Resolved.* Custom payloads load from **JSON in the core build** (reuses `serde_json`, so the default install adds no parser dependency); **YAML is behind an opt-in `yaml` cargo feature**. Shipped in v0.3.0 (FR-P1).
+- **Q5 (hosted/SaaS track)** — *Resolved: in scope* as a post-1.0 track. See §13a.
 
 ---
 
@@ -61,27 +66,31 @@ The v0.1–v0.2.0 prototype classified every non-error response as a CRITICAL fi
 
 ---
 
-## 5. Current state — v0.2.1 (baseline)
+## 5. Current state — v0.3.0 (Rust)
 
-Verified and reproducible today:
+The product was ported from the Python prototype to **Rust** in v0.3.0 (single static binary,
+`#![forbid(unsafe_code)]`, clippy `pedantic`+`nursery` clean, `cargo fmt` enforced). Verified
+and reproducible today:
 
 - **Transport:** stdio (subprocess + JSON-RPC handshake).
 - **Subcommands:** `fuzz` (dynamic), `scan` (static schema heuristics).
 - **Probes:** 5 types, 35 distinct payloads — shell injection (8), SSRF (8), overflow (5), type confusion (6+), prompt injection (6). 25 payloads fired per plain string param, 33 per URI string param, 24 for no-schema tools.
+- **Custom payloads:** `--payloads <file>` merges user payloads and probe toggles (JSON in core, YAML behind the `yaml` feature). User `evidence.contains` matchers can promote an accepted response to a finding. *(FR-P1 — done.)*
+- **Safe mode:** `--safe` caps oversized/destructive payloads (partial FR-R2; consent gate FR-R3 still pending).
 - **Classification:** `REJECTED` / `ACCEPTED` / `FINDING` (evidence-backed) / `CRASH` / `ERROR`.
 - **Output:** table, JSON, SARIF; progress on stderr, data on stdout.
 - **Exit codes:** 0 = no crashes, 1 = transport error, 2 = crash found.
-- **Quality gates:** ruff + mypy + pytest in CI across Python 3.11–3.13.
-- **Verified results:** server-memory (0 findings / 41 accepted / 50 rejected), server-filesystem (0 / 24 / 466), both 0 crashes.
+- **Quality gates:** `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (unit + ignored live integration test) in CI.
+- **Verified results:** server-memory (0 findings / 41 accepted / 50 rejected), server-filesystem (0 / 24 / 466), both 0 crashes — identical to the Python baseline.
 
 ### Known limitations (drive the roadmap)
 1. stdio only — no SSE / HTTP.
 2. Single-parameter payloads — no multi-field injection chains.
 3. Heuristic leak detection — signature-based; novel leak formats read as `ACCEPTED`.
 4. Stateful drift — write-capable servers change their own results across runs.
-5. No custom-payload mechanism — probes are hard-coded.
-6. No consent/safety gating for destructive payloads or third-party targets.
-7. No retry/respawn after a crash — fuzzing stops at first lost transport.
+5. No consent gate for destructive payloads against third-party targets (safe mode exists; auto-gating does not).
+6. No retry/respawn after a crash — fuzzing stops at first lost transport.
+7. Blocking reads — a hung server is not yet bounded by a read timeout.
 
 ---
 
@@ -109,8 +118,8 @@ Priorities: **P0** = required for v1.0, **P1** = strongly desired, **P2** = nice
 - **FR-T4 (P1) — Transport auto-detect.** Infer transport from the argument shape (command vs URL) with an explicit `--transport` override.
 
 ### 7.2 Probe & payload engine
-- **FR-P1 (P0) — Custom payloads via config.** Load additional payloads/probes from a YAML (or JSON) file.
-  - AC: `fuzz --payloads custom.yml` merges user payloads with built-ins; a payload entry specifies value, rule_id, severity, target param-type, and an optional expected-evidence matcher.
+- **FR-P1 (P0) — Custom payloads via config. ✅ Done (v0.3.0).** Load additional payloads/probes from a JSON file (YAML behind the `yaml` feature). Per Q3, JSON is core (no extra dependency); YAML is an opt-in extra.
+  - AC: `fuzz --payloads custom.json` merges user payloads with built-ins; a payload entry specifies value, rule_id, severity, target param-type, and an optional `evidence.contains` matcher that promotes acceptance to a finding. *(Met.)*
 - **FR-P2 (P1) — Multi-parameter payloads.** Populate all required params with benign values and inject the adversarial payload into one target at a time (and optionally combinations).
   - AC: tools with multiple required params are fuzzed without spurious "missing required field" rejections masking real behavior.
 - **FR-P3 (P1) — Probe selection.** Enable/disable probe categories per run.
@@ -171,7 +180,7 @@ Priorities: **P0** = required for v1.0, **P1** = strongly desired, **P2** = nice
 - **NFR-1 Performance.** Fuzz a 15-tool server with the default suite in < 30 s on stdio (excluding server cold-start). Payload firing is I/O-bound; support optional concurrency where the transport allows.
 - **NFR-2 Determinism.** With a fixed seed and a stateless target, results are byte-identical across runs. State-dependence is documented per target.
 - **NFR-3 Compatibility.** Python 3.11–3.13; Linux/macOS/Windows. Track the current MCP protocol version with graceful failure on unknown message types.
-- **NFR-4 Dependencies.** Core stays stdlib-only. SSE/HTTP/YAML may introduce **optional** extras (`pip install mcp-guard[http]`); the default install remains zero-dependency.
+- **NFR-4 Dependencies.** Lean, audited core: `serde`/`serde_json`/`clap`/`thiserror`. New formats and transports land behind **optional cargo features** (e.g. `--features yaml`, future `--features http`); the default build stays minimal. `#![forbid(unsafe_code)]` crate-wide.
 - **NFR-5 Security & privacy.** Never log secrets; redact auth material in all outputs; no telemetry without explicit opt-in.
 - **NFR-6 Reliability.** A single tool's failure never aborts the whole run (see FR-R1). Non-zero exit only per the configured policy.
 - **NFR-7 Maintainability.** ruff + mypy clean; test coverage on the classifier, transports, and report formatters. Single source of truth for version (`__version__`), enforced by test.
@@ -220,23 +229,25 @@ probes:
 
 ## 10. Architecture notes
 
-Current module layout is sound and should be preserved:
+Current Rust module layout:
 
 ```
-src/mcp_guard/
-  fuzzer.py      # engine: payload delivery + classification
-  payloads.py    # built-in payload generators
-  transport.py   # stdio transport (Transport protocol)
-  scanner.py     # static schema heuristics
-  report.py      # table / JSON / SARIF formatters
-  cli.py         # argument parsing + orchestration
+src/
+  fuzzer.rs      # engine: payload delivery + classification; Transport trait
+  payloads.rs    # built-in payload generators
+  transport.rs   # stdio transport implementing Transport
+  scanner.rs     # static schema heuristics
+  report.rs      # table / JSON / SARIF formatters
+  config.rs      # custom payloads / probe toggles (JSON; YAML feature)
+  cli.rs         # clap parsing + orchestration
+  lib.rs, main.rs
 ```
 
 Planned evolution:
-- **Transport** becomes a package (`transport/{stdio,sse,http}.py`) behind the existing `Transport` Protocol so the engine is transport-agnostic. New deps stay isolated to the HTTP/SSE modules and optional extras.
-- **Payloads/probes** become data-driven (built-in YAML + user YAML) loaded into the same `Payload` dataclass, so FR-P1/FR-C4 share one path.
-- **Policy** (fail-on, safe mode, consent) lives in a small config object threaded from CLI/library into the engine — not scattered through `cli.py`.
+- **Transport** becomes a module group (`transport/{stdio,sse,http}.rs`) behind the existing `Transport` trait so the engine stays transport-agnostic. HTTP/SSE crates live behind optional cargo features.
+- **Policy** (fail-on, safe mode, consent) becomes a small config struct threaded from CLI/library into the engine — keeping `cli.rs` thin.
 - **Report** gains markdown/HTML emitters alongside the existing formatters; the JSON schema is versioned and snapshot-tested.
+- **Reliability** adds bounded reads (timeout via a reader thread/channel) and crash respawn (FR-R1).
 
 ---
 
@@ -244,9 +255,9 @@ Planned evolution:
 
 | Release | Theme | Scope (FR IDs) |
 |---|---|---|
-| **v0.3** | Trust & policy hardening | FR-C1✓, FR-C2, FR-R1, FR-O1, FR-A1, NFR-2/-7 |
+| **v0.3** ✅ | Rust port + extensibility | Rust rewrite, FR-C1✓, FR-P1✓, FR-A1✓, partial FR-R2 (`--safe`), NFR-4/-7 |
 | **v0.4** | Networked transports + safety | FR-T1, FR-T2, FR-T3, FR-R2, FR-R3, FR-R4 |
-| **v0.5** | Extensibility | FR-P1, FR-P2, FR-P3, FR-C4 |
+| **v0.5** | Trust & reliability | FR-C2, FR-C3, FR-C4, FR-P2, FR-P3, FR-R1, FR-O1 |
 | **v0.6** | CI & reporting | FR-CI1, FR-CI2, FR-O2✓, FR-O3, FR-O4, FR-D1 |
 | **v1.0** | GA hardening | All P0 complete; docs, stable JSON/API, leaderboard process (FR-L1), responsible-use defaults |
 | **post-1.0** | Reach | FR-P4, FR-P5, FR-C5, FR-CI3, FR-D2, FR-L2, hosted track (§13) |
@@ -280,13 +291,26 @@ Planned evolution:
 
 ---
 
+## 13a. Hosted / SaaS track (Q5 — in scope, post-1.0)
+
+A managed offering on top of the open-source CLI. The CLI/library remains the engine and stays
+fully usable standalone; the hosted product adds continuity and collaboration. Requires its own
+detailed PRD before build; this section sets the intent and guardrails.
+
+- **HS-1 — Continuous monitoring.** Scheduled fuzz runs against registered MCP servers (stdio via a customer-side runner, or networked transports once shipped), with alerting on new findings/crashes.
+- **HS-2 — Trend dashboard.** Per-server posture over time, built on diff mode (FR-D1/FR-D2): new vs resolved findings, accepted-without-validation deltas.
+- **HS-3 — Team workflows.** Triage state, suppressions/baselines (FR-CI3), and shareable reports (FR-O3).
+- **HS-4 — Org policy.** Centralized `--fail-on` and probe policies enforced across a fleet of pipelines.
+- **HS-5 — Authorization & isolation.** Hosted runs must honor the same consent model (FR-R3) and run fuzzing in isolated, customer-scoped runners; never store secrets (NFR-5).
+- **Boundary.** Open-source parity is preserved — no engine capability is gated behind the SaaS. The hosted product sells *continuity, history, and collaboration*, not the fuzzer itself.
+
 ## 14. Open questions
 
 - **Q1** — Concurrency model for networked transports: per-tool parallelism vs strict sequential for determinism? (Lean sequential by default, opt-in concurrency.)
 - **Q2** — Should `scan` (static heuristics) remain in scope, or be deprecated in favor of pure dynamic fuzzing?
-- **Q3** — YAML config implies a parser dependency; is a JSON-only config acceptable to preserve zero-dep core, with YAML as an extra?
 - **Q4** — Severity rubric: adopt a CVSS-like score or keep qualitative critical/high/medium?
-- **Q5** — Is a hosted/SaaS track (continuous monitoring, dashboards) worth a separate PRD, or explicitly out of scope long-term?
+
+> Q3 (config dependency) and Q5 (hosted track) are resolved — see the header and §13a.
 
 ---
 

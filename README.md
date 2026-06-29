@@ -10,12 +10,12 @@
 **Adversarial fuzzer for MCP servers — send real payloads, classify every response.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/ShovalBenjer/mcp-guard/ci.yml?branch=main&style=for-the-badge)](https://github.com/ShovalBenjer/mcp-guard/actions/workflows/ci.yml)
-[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Rust](https://img.shields.io/badge/rust-1.85%2B-CE422B?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge)](LICENSE)
-[![Zero Deps](https://img.shields.io/badge/dependencies-0-green?style=for-the-badge)]()
-[![Payloads](https://img.shields.io/badge/payloads-35-blueviolet?style=for-the-badge)](src/mcp_guard/payloads.py)
+[![unsafe](https://img.shields.io/badge/unsafe-forbidden-success?style=for-the-badge)]()
+[![Payloads](https://img.shields.io/badge/payloads-35-blueviolet?style=for-the-badge)](src/payloads.rs)
 
-[What It Does](#what-it-does) · [How to Read Results](#how-to-read-results) · [Real Results](#real-results) · [Install](#install) · [Usage](#usage) · [Python API](#python-api) · [Leaderboard](LEADERBOARD.md)
+[What It Does](#what-it-does) · [How to Read Results](#how-to-read-results) · [Real Results](#real-results) · [Install](#install) · [Usage](#usage) · [Rust API](#rust-api) · [Leaderboard](LEADERBOARD.md)
 
 </div>
 
@@ -29,6 +29,8 @@
 | **How** | "Does this look safe?" | "What happens when I actually send this?" |
 | **Analogy** | Reading the nutrition label | Eating the food |
 | **Tool** | microsoft/agent-governance-toolkit | This repo |
+
+Written in Rust: a single static binary, `#![forbid(unsafe_code)]`, clippy-pedantic clean.
 
 ## What It Does
 
@@ -50,7 +52,7 @@
 | **Type confusion** | Wrong types, null for required, arrays for scalars | Missing input validation |
 | **Prompt injection** | DAN override, system prompt extraction, XML injection | Instruction override, prompt leak |
 
-Payloads are **schema-aware** — URI params get SSRF probes, string params get injection + overflow, no-schema tools get a mixed suite.
+Payloads are **schema-aware** — URI params get SSRF probes, string params get injection + overflow, no-schema tools get a mixed suite. Add your own with `--payloads custom.json` (see [Custom payloads](#custom-payloads)).
 
 ## How to Read Results
 
@@ -106,11 +108,20 @@ $ mcp-guard fuzz -- npx -y @modelcontextprotocol/server-filesystem /tmp/sandbox
 
 ## Install
 
+Requires Rust 1.85+ (edition 2024).
+
 ```bash
+# Install the binary from source
+cargo install --git https://github.com/ShovalBenjer/mcp-guard
+
+# …or build from a clone
 git clone https://github.com/ShovalBenjer/mcp-guard.git
 cd mcp-guard
-pip install -e ".[dev]"
+cargo build --release
+./target/release/mcp-guard --help
 ```
+
+The default build is lean (`serde`, `serde_json`, `clap`, `thiserror`). YAML config support is an opt-in feature: `cargo build --release --features yaml`.
 
 ## Usage
 
@@ -124,6 +135,9 @@ mcp-guard fuzz --format json -- npx -y @modelcontextprotocol/server-filesystem /
 # SARIF for the GitHub Security tab
 mcp-guard fuzz --format sarif -- npx -y @modelcontextprotocol/server-github
 
+# Safe mode: cap destructive/oversized payloads
+mcp-guard fuzz --safe -- npx -y @modelcontextprotocol/server-memory
+
 # Throttle payloads (ms between calls) for rate-limited servers
 mcp-guard fuzz --delay-ms 50 -- npx -y @modelcontextprotocol/server-memory
 
@@ -133,22 +147,44 @@ mcp-guard scan -- npx -y @modelcontextprotocol/server-memory
 
 Exit codes: `0` = no crashes, `1` = error talking to the server, `2` = crashes found.
 
-## Python API
+### Custom payloads
 
-```python
-from mcp_guard.fuzzer import FuzzEngine, ResultCategory
-from mcp_guard.transport import StdioTransport
+Add your own payloads and toggle built-in probes with a JSON config (YAML with `--features yaml`):
 
-with StdioTransport(["npx", "-y", "@modelcontextprotocol/server-memory"]) as transport:
-    engine = FuzzEngine(transport=transport)
-    for tool in transport.list_tools():
-        results = engine.fuzz_tool(tool)
-        crashes = [r for r in results if r.category == ResultCategory.CRASH]
-        leaks = [r for r in results if r.category == ResultCategory.FINDING]
-        if crashes:
-            print(f"DOS: {tool['name']} crashed on {len(crashes)} payloads")
-        if leaks:
-            print(f"LEAK: {tool['name']} leaked data on {len(leaks)} payloads")
+```json
+{
+  "payloads": [
+    { "value": "{{7*7}}", "rule_id": "template-injection", "severity": "high",
+      "applies_to": ["string"], "evidence": { "contains": "49" } }
+  ],
+  "probes": { "disable": ["overflow"] }
+}
+```
+
+```bash
+mcp-guard fuzz --payloads custom.json -- npx -y @myorg/mcp-server
+```
+
+`applies_to` empty = all parameter types (and no-schema tools). An `evidence.contains` match promotes an accepted response to a `FINDING`.
+
+## Rust API
+
+```rust
+use mcp_guard::fuzzer::{FuzzEngine, ResultCategory};
+use mcp_guard::transport::StdioTransport;
+
+let mut transport = StdioTransport::spawn(&[
+    "npx".into(), "-y".into(), "@modelcontextprotocol/server-memory".into(),
+])?;
+let engine = FuzzEngine::new(0);
+for tool in transport.list_tools()? {
+    let results = engine.fuzz_tool(&mut transport, &tool);
+    let crashes = results.iter().filter(|r| r.category == ResultCategory::Crash).count();
+    let leaks   = results.iter().filter(|r| r.category == ResultCategory::Finding).count();
+    if crashes > 0 { eprintln!("DOS: {} crashed on {crashes} payloads", tool["name"]); }
+    if leaks  > 0 { eprintln!("LEAK: {} leaked on {leaks} payloads", tool["name"]); }
+}
+# Ok::<(), mcp_guard::fuzzer::TransportError>(())
 ```
 
 ## CI Integration
@@ -156,7 +192,7 @@ with StdioTransport(["npx", "-y", "@modelcontextprotocol/server-memory"]) as tra
 ```yaml
 - name: Security fuzz
   run: |
-    pip install -e ".[dev]"
+    cargo install --git https://github.com/ShovalBenjer/mcp-guard
     mkdir -p /tmp/sandbox
     mcp-guard fuzz --format sarif -- npx -y @myorg/mcp-server > results.sarif
 - name: Upload SARIF
@@ -170,16 +206,18 @@ Crashes become SARIF `error`s, leaks become `warning`s, and accepted-without-val
 ## Architecture
 
 ```
-src/mcp_guard/
-  fuzzer.py      # Core fuzz engine — payload delivery + response classification
-  payloads.py    # 35 adversarial payloads across 5 probe types
-  transport.py   # MCP stdio transport (JSON-RPC handshake)
-  scanner.py     # Static schema analysis (OWASP rules)
-  report.py      # Output formatters: table, JSON, SARIF
-  cli.py         # CLI: fuzz, scan subcommands
+src/
+  fuzzer.rs      # Core fuzz engine — payload delivery + response classification
+  payloads.rs    # 35 adversarial payloads across 5 probe types
+  transport.rs   # MCP stdio transport (JSON-RPC handshake)
+  scanner.rs     # Static schema analysis (OWASP-style heuristics)
+  report.rs      # Output formatters: table, JSON, SARIF
+  config.rs      # Custom payloads / probe toggles (JSON; YAML behind a feature)
+  cli.rs         # CLI: fuzz, scan subcommands
+  lib.rs / main.rs
 ```
 
-Zero external dependencies. Python 3.11+ stdlib only.
+`#![forbid(unsafe_code)]`, clippy `pedantic` + `nursery` clean, `cargo fmt` enforced in CI.
 
 ## Limitations
 
@@ -192,9 +230,9 @@ Zero external dependencies. Python 3.11+ stdlib only.
 
 The full plan — requirements, milestones, and success metrics — lives in the [Product Requirements Document](docs/PRD.md). Near-term highlights:
 
+- [x] Custom payloads via config (JSON in core, YAML behind a feature)
 - [ ] SSE + streamable HTTP transports
 - [ ] Safe mode + authorization gate for third-party targets
-- [ ] Custom payloads via config
 - [ ] GitHub Action (fuzz on every PR)
 - [ ] Diff mode: compare fuzz results between server versions
 - [ ] MCP server security leaderboard (community submissions)

@@ -1,20 +1,23 @@
 name: CI
 on: [push, pull_request]
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev]"
-      - name: Lint (ruff)
-        run: ruff check src/ tests/
-      - name: Type check (mypy)
-        run: mypy src/mcp_guard
-      - name: Tests
-        run: pytest tests/ -v --tb=short
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Lint (clippy)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Test
+        run: cargo test --all-features
+      - name: Build (release)
+        run: cargo build --release

@@ -200,9 +200,7 @@ footer{text-align:center;padding:40px;color:#444;font-size:0.85em}
   <h2>Try it yourself</h2>
   <p style="margin:12px 0 24px">Fuzz your own MCP servers in 60 seconds.</p>
   <a href="https://github.com/ShovalBenjer/mcp-guard">GitHub Repo &rarr;</a>
-  <div class="code-block" style="text-align:left;margin-top:24px">git clone https://github.com/ShovalBenjer/mcp-guard.git
-cd mcp-guard
-pip install -e ".[dev]"
+  <div class="code-block" style="text-align:left;margin-top:24px">cargo install --git https://github.com/ShovalBenjer/mcp-guard
 <span class="green"># Fuzz any MCP server:</span>
 mcp-guard fuzz -- npx -y @modelcontextprotocol/server-memory</div>
 </div>
@@ -210,7 +208,7 @@ mcp-guard fuzz -- npx -y @modelcontextprotocol/server-memory</div>
 <hr>
 <footer>
   <p><a href="https://github.com/ShovalBenjer/mcp-guard">mcp-guard</a> is open source (MIT) by <a href="https://github.com/ShovalBenjer">Shoval Benjer</a></p>
-  <p style="margin-top:8px">Honest results &middot; Reproducible &middot; Zero dependencies</p>
+  <p style="margin-top:8px">Honest results &middot; Reproducible &middot; Written in Rust</p>
 </footer>
 
 </div>
