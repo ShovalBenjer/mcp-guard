@@ -12,6 +12,7 @@ use crate::fuzzer::{Transport, TransportError};
 ///
 /// The child is killed when the transport is dropped.
 pub struct StdioTransport {
+    command: Vec<String>,
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
@@ -24,6 +25,21 @@ impl StdioTransport {
     /// `command` is the program followed by its arguments, e.g.
     /// `["npx", "-y", "@modelcontextprotocol/server-memory"]`.
     pub fn spawn(command: &[String]) -> Result<Self, TransportError> {
+        let (child, stdin, stdout) = Self::spawn_process(command)?;
+        let mut transport = Self {
+            command: command.to_vec(),
+            child,
+            stdin,
+            stdout,
+            request_id: 0,
+        };
+        transport.initialize()?;
+        Ok(transport)
+    }
+
+    fn spawn_process(
+        command: &[String],
+    ) -> Result<(Child, ChildStdin, BufReader<ChildStdout>), TransportError> {
         let (program, args) = command
             .split_first()
             .ok_or_else(|| TransportError::Protocol("empty server command".to_owned()))?;
@@ -44,14 +60,7 @@ impl StdioTransport {
             .take()
             .ok_or_else(|| TransportError::Protocol("failed to capture stdout".to_owned()))?;
 
-        let mut transport = Self {
-            child,
-            stdin,
-            stdout: BufReader::new(stdout),
-            request_id: 0,
-        };
-        transport.initialize()?;
-        Ok(transport)
+        Ok((child, stdin, BufReader::new(stdout)))
     }
 
     fn initialize(&mut self) -> Result<(), TransportError> {
@@ -135,6 +144,17 @@ impl Transport for StdioTransport {
             "tools/call",
             Some(json!({ "name": tool_name, "arguments": arguments })),
         )
+    }
+
+    fn reconnect(&mut self) -> Result<(), TransportError> {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let (child, stdin, stdout) = Self::spawn_process(&self.command)?;
+        self.child = child;
+        self.stdin = stdin;
+        self.stdout = stdout;
+        self.request_id = 0;
+        self.initialize()
     }
 }
 

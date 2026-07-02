@@ -38,15 +38,14 @@ struct FuzzArgs {
     /// Safe mode: cap destructive/oversized payloads.
     #[arg(long, default_value_t = false)]
     safe: bool,
+    /// Which result category should cause a non-zero exit (for CI gating).
+    #[arg(long = "fail-on", value_enum, default_value_t = FailOn::Crash)]
+    fail_on: FailOn,
     /// Load custom payloads/probe toggles from a config file (.json, or .yml with `--features yaml`).
     #[arg(long, value_name = "FILE")]
     payloads: Option<PathBuf>,
     /// The MCP server command, after `--`, e.g. `-- npx -y @modelcontextprotocol/server-memory`.
-    #[arg(
-        trailing_var_arg = true,
-        allow_hyphen_values = true,
-        value_name = "-- SERVER_COMMAND"
-    )]
+    #[arg(last = true, num_args = 1.., value_name = "SERVER_COMMAND")]
     server_command: Vec<String>,
 }
 
@@ -56,11 +55,7 @@ struct ScanArgs {
     #[arg(long, value_enum, default_value_t = Format::Table)]
     format: Format,
     /// The MCP server command, after `--`.
-    #[arg(
-        trailing_var_arg = true,
-        allow_hyphen_values = true,
-        value_name = "-- SERVER_COMMAND"
-    )]
+    #[arg(last = true, num_args = 1.., value_name = "SERVER_COMMAND")]
     server_command: Vec<String>,
 }
 
@@ -71,7 +66,37 @@ enum Format {
     Sarif,
 }
 
-/// Parse arguments and run. Returns the process exit code (`0` ok, `1` error, `2` crashes).
+/// Which result category should make the process exit non-zero.
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+enum FailOn {
+    /// Only crashes fail the run (default).
+    Crash,
+    /// Crashes or evidence-backed findings fail the run.
+    Finding,
+    /// Crashes, findings, or any accepted-without-validation result fail the run.
+    Accepted,
+    /// Never fail (always exit 0).
+    None,
+}
+
+/// Compute the process exit code: `2` for crashes, `1` for the softer failure categories, `0`
+/// otherwise. Kept pure for testing.
+fn exit_code_for(crashes: usize, findings: usize, accepted: usize, fail_on: FailOn) -> u8 {
+    if fail_on == FailOn::None {
+        return 0;
+    }
+    if crashes > 0 {
+        return 2;
+    }
+    match fail_on {
+        FailOn::Finding => u8::from(findings > 0),
+        FailOn::Accepted => u8::from(findings > 0 || accepted > 0),
+        FailOn::Crash | FailOn::None => 0,
+    }
+}
+
+/// Parse arguments and run. Returns the process exit code: `0` = clean (per `--fail-on`),
+/// `1` = error talking to the server or a soft failure, `2` = crashes found.
 #[must_use]
 pub fn run() -> ExitCode {
     let cli = Cli::parse();
@@ -134,21 +159,22 @@ fn run_fuzz(args: &FuzzArgs) -> ExitCode {
     }
 
     eprintln!("[*] Found {} tools. Generating payloads...", tools.len());
-    let mut results = Vec::new();
-    for tool in &tools {
-        let name = tool
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+    let outcome = engine.fuzz_server(&mut transport, &tools, |name| {
         eprintln!("[*] Fuzzing: {name}...");
-        results.extend(engine.fuzz_tool(&mut transport, tool));
+    });
+    if outcome.aborted {
+        eprintln!(
+            "[!] Server crashed and could not be restarted — stopped after {} of {} tools.",
+            outcome.tools_fuzzed,
+            tools.len()
+        );
     }
 
     let report = FuzzReport {
         server_command: cmd.join(" "),
-        tools_fuzzed: tools.len(),
-        total_payloads: results.len(),
-        results,
+        tools_fuzzed: outcome.tools_fuzzed,
+        total_payloads: outcome.results.len(),
+        results: outcome.results,
     };
 
     let mut stdout = std::io::stdout().lock();
@@ -162,11 +188,12 @@ fn run_fuzz(args: &FuzzArgs) -> ExitCode {
         return ExitCode::from(1);
     }
 
-    if report.crashes() > 0 {
-        ExitCode::from(2)
-    } else {
-        ExitCode::from(0)
-    }
+    ExitCode::from(exit_code_for(
+        report.crashes(),
+        report.findings(),
+        report.accepted(),
+        args.fail_on,
+    ))
 }
 
 fn run_scan(args: &ScanArgs) -> ExitCode {
@@ -226,4 +253,38 @@ fn run_scan(args: &ScanArgs) -> ExitCode {
     }
     println!();
     ExitCode::from(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FailOn, exit_code_for};
+
+    #[test]
+    fn crash_dominates_and_yields_two() {
+        for policy in [FailOn::Crash, FailOn::Finding, FailOn::Accepted] {
+            assert_eq!(exit_code_for(1, 0, 5, policy), 2);
+        }
+    }
+
+    #[test]
+    fn fail_on_crash_ignores_softer_categories() {
+        assert_eq!(exit_code_for(0, 3, 9, FailOn::Crash), 0);
+    }
+
+    #[test]
+    fn fail_on_finding_flags_findings_only() {
+        assert_eq!(exit_code_for(0, 1, 0, FailOn::Finding), 1);
+        assert_eq!(exit_code_for(0, 0, 9, FailOn::Finding), 0);
+    }
+
+    #[test]
+    fn fail_on_accepted_flags_findings_or_accepted() {
+        assert_eq!(exit_code_for(0, 0, 1, FailOn::Accepted), 1);
+        assert_eq!(exit_code_for(0, 0, 0, FailOn::Accepted), 0);
+    }
+
+    #[test]
+    fn fail_on_none_never_fails() {
+        assert_eq!(exit_code_for(9, 9, 9, FailOn::None), 0);
+    }
 }

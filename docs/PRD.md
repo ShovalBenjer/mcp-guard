@@ -8,7 +8,7 @@
 | **Last updated** | 2026-06-28 |
 | **Owner** | Shoval Benjer |
 | **Implementation** | Rust (edition 2024, MSRV 1.85) — ported from the Python prototype in v0.3.0 |
-| **Current release** | v0.3.0 |
+| **Current release** | v0.3.1 |
 | **Target** | v1.0 (general availability) |
 
 ### Resolved decisions
@@ -77,9 +77,11 @@ and reproducible today:
 - **Probes:** 5 types, 35 distinct payloads — shell injection (8), SSRF (8), overflow (5), type confusion (6+), prompt injection (6). 25 payloads fired per plain string param, 33 per URI string param, 24 for no-schema tools.
 - **Custom payloads:** `--payloads <file>` merges user payloads and probe toggles (JSON in core, YAML behind the `yaml` feature). User `evidence.contains` matchers can promote an accepted response to a finding. *(FR-P1 — done.)*
 - **Safe mode:** `--safe` caps oversized/destructive payloads (partial FR-R2; consent gate FR-R3 still pending).
+- **Crash recovery (FR-R1 — done):** a tool that crashes the server triggers a transport respawn so the remaining tools are still fuzzed; the run only aborts if the server can't be restarted.
+- **CI gating (FR-C2 — done):** `--fail-on {crash,finding,accepted,none}` selects which category makes the process exit non-zero.
 - **Classification:** `REJECTED` / `ACCEPTED` / `FINDING` (evidence-backed) / `CRASH` / `ERROR`.
 - **Output:** table, JSON, SARIF; progress on stderr, data on stdout.
-- **Exit codes:** 0 = no crashes, 1 = transport error, 2 = crash found.
+- **Exit codes:** 2 = crashes, 1 = transport error or soft failure (per `--fail-on`), 0 = clean.
 - **Quality gates:** `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (unit + ignored live integration test) in CI.
 - **Verified results:** server-memory (0 findings / 41 accepted / 50 rejected), server-filesystem (0 / 24 / 466), both 0 crashes — identical to the Python baseline.
 
@@ -89,8 +91,7 @@ and reproducible today:
 3. Heuristic leak detection — signature-based; novel leak formats read as `ACCEPTED`.
 4. Stateful drift — write-capable servers change their own results across runs.
 5. No consent gate for destructive payloads against third-party targets (safe mode exists; auto-gating does not).
-6. No retry/respawn after a crash — fuzzing stops at first lost transport.
-7. Blocking reads — a hung server is not yet bounded by a read timeout.
+6. Blocking reads — a hung (non-crashing) server is not yet bounded by a read timeout.
 
 ---
 
@@ -130,16 +131,16 @@ Priorities: **P0** = required for v1.0, **P1** = strongly desired, **P2** = nice
 ### 7.3 Classification & evidence
 - **FR-C1 (P0) — Evidence-backed findings only.** A `FINDING` requires a concrete evidence match (leak signature, payload reflection proving execution, or a crash). Maintain the `ACCEPTED` (informational) tier.
   - AC: a regression test asserts a normal non-error response is never classified `FINDING`.
-- **FR-C2 (P0) — Configurable failure policy.** `--fail-on {crash,finding,accepted,none}` controls the non-zero exit threshold (default `crash`).
-  - AC: CI can choose to fail on findings without failing on accepted.
+- **FR-C2 (P0) — Configurable failure policy. ✅ Done (v0.3.1).** `--fail-on {crash,finding,accepted,none}` controls the non-zero exit threshold (default `crash`).
+  - AC: CI can choose to fail on findings without failing on accepted. *(Met; exit-code logic is unit-tested.)*
 - **FR-C3 (P1) — Reflection detection.** Flag a finding when an injected marker payload is echoed back in a context indicating execution/interpolation (distinct from mere storage).
   - AC: a fixture server that interpolates input into a shell string is detected; one that merely stores and returns it is not.
 - **FR-C4 (P1) — Extensible evidence matchers.** Leak/evidence signatures are data-driven and user-extendable alongside FR-P1.
 - **FR-C5 (P2) — Confidence scoring.** Attach a confidence level to each result to aid triage.
 
 ### 7.4 Reliability & safety
-- **FR-R1 (P0) — Crash recovery.** On lost transport, record the crash-causing payload, respawn/reconnect, and continue remaining probes.
-  - AC: a fixture server that exits on a specific payload still yields results for all other tools.
+- **FR-R1 (P0) — Crash recovery. ✅ Done (v0.3.1).** On lost transport, record the crash, respawn/reconnect, and continue with the remaining tools.
+  - AC: a fixture server that exits on a specific payload still yields results for all other tools. *(Met — verified with a stub server: the crashing tool's results are recorded, the transport respawns, and subsequent tools are fuzzed. Recovery is at the tool boundary; payloads remaining within the crashing tool are not retried.)*
 - **FR-R2 (P0) — Safe mode for destructive payloads.** A `--safe` mode (default on for non-localhost / third-party targets) substitutes inert markers for destructive payloads (`; rm -rf /` → tagged sentinel) so mcp-guard never induces real data loss it can avoid.
   - AC: in safe mode no payload contains a literally destructive command; `--unsafe` is required to send raw destructive payloads and prints a warning.
 - **FR-R3 (P0) — Third-party consent gate.** Fuzzing a target that isn't localhost/loopback requires explicit `--i-have-authorization` (or config equivalent) and prints a responsible-use notice.
@@ -255,9 +256,9 @@ Planned evolution:
 
 | Release | Theme | Scope (FR IDs) |
 |---|---|---|
-| **v0.3** ✅ | Rust port + extensibility | Rust rewrite, FR-C1✓, FR-P1✓, FR-A1✓, partial FR-R2 (`--safe`), NFR-4/-7 |
+| **v0.3** ✅ | Rust port + extensibility + reliability | Rust rewrite, FR-C1✓, FR-P1✓, FR-A1✓, FR-R1✓, FR-C2✓, partial FR-R2 (`--safe`), NFR-4/-7 |
 | **v0.4** | Networked transports + safety | FR-T1, FR-T2, FR-T3, FR-R2, FR-R3, FR-R4 |
-| **v0.5** | Trust & reliability | FR-C2, FR-C3, FR-C4, FR-P2, FR-P3, FR-R1, FR-O1 |
+| **v0.5** | Trust & reliability | FR-C3, FR-C4, FR-P2, FR-P3, FR-O1, read-timeout |
 | **v0.6** | CI & reporting | FR-CI1, FR-CI2, FR-O2✓, FR-O3, FR-O4, FR-D1 |
 | **v1.0** | GA hardening | All P0 complete; docs, stable JSON/API, leaderboard process (FR-L1), responsible-use defaults |
 | **post-1.0** | Reach | FR-P4, FR-P5, FR-C5, FR-CI3, FR-D2, FR-L2, hosted track (§13) |

@@ -138,6 +138,9 @@ mcp-guard fuzz --format sarif -- npx -y @modelcontextprotocol/server-github
 # Safe mode: cap destructive/oversized payloads
 mcp-guard fuzz --safe -- npx -y @modelcontextprotocol/server-memory
 
+# Gate CI on more than crashes: fail the run on any accepted-without-validation result
+mcp-guard fuzz --fail-on accepted -- npx -y @modelcontextprotocol/server-memory
+
 # Throttle payloads (ms between calls) for rate-limited servers
 mcp-guard fuzz --delay-ms 50 -- npx -y @modelcontextprotocol/server-memory
 
@@ -145,7 +148,9 @@ mcp-guard fuzz --delay-ms 50 -- npx -y @modelcontextprotocol/server-memory
 mcp-guard scan -- npx -y @modelcontextprotocol/server-memory
 ```
 
-Exit codes: `0` = no crashes, `1` = error talking to the server, `2` = crashes found.
+**Exit codes.** `2` = crashes found, `1` = error talking to the server (or a soft failure under `--fail-on`), `0` = clean. `--fail-on {crash,finding,accepted,none}` (default `crash`) chooses which result category makes the run fail — e.g. `--fail-on finding` fails on evidence-backed leaks, `--fail-on none` never fails.
+
+**Crash recovery.** If one tool crashes the server, mcp-guard restarts it and continues fuzzing the remaining tools rather than aborting the whole run.
 
 ### Custom payloads
 
@@ -225,6 +230,7 @@ src/
 - **Single-parameter payloads.** Each payload sets one parameter at a time; multi-field injection chains aren't generated.
 - **Leak detection is heuristic.** `FINDING` matches known leak signatures (stack traces, `/etc/passwd`, private keys, cloud-metadata fields). A novel leak format can read as `ACCEPTED` — review `ACCEPTED` results on security-sensitive tools by hand.
 - **Stateful servers drift.** Tools that write (filesystem, memory) change their own results across runs; fuzz against a fresh sandbox for reproducibility.
+- **Blocking reads.** A server that hangs (rather than crashing) is not yet bounded by a read timeout — on the roadmap.
 
 ## Roadmap
 

@@ -1,6 +1,6 @@
 [package]
 name = "mcp-guard"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Adversarial fuzzer for MCP servers — send real payloads and classify the responses"

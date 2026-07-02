@@ -26,6 +26,16 @@ pub enum TransportError {
 pub trait Transport {
     /// Invoke `tool_name` with `arguments` and return the JSON-RPC `result`.
     fn call_tool(&mut self, tool_name: &str, arguments: Value) -> Result<Value, TransportError>;
+
+    /// Re-establish the connection after a crash so fuzzing can continue.
+    ///
+    /// The default implementation reports that reconnection is unsupported; transports that can
+    /// respawn their server (e.g. [`crate::transport::StdioTransport`]) override it.
+    fn reconnect(&mut self) -> Result<(), TransportError> {
+        Err(TransportError::Protocol(
+            "reconnect not supported".to_owned(),
+        ))
+    }
 }
 
 /// The outcome bucket for a single payload.
@@ -81,6 +91,17 @@ pub struct FuzzResult {
     pub response_preview: String,
 }
 
+/// The outcome of fuzzing a whole server with [`FuzzEngine::fuzz_server`].
+#[derive(Debug)]
+pub struct ServerFuzzOutcome {
+    /// One entry per payload fired across all tools reached.
+    pub results: Vec<FuzzResult>,
+    /// Number of tools actually fuzzed (may be fewer than requested if the run aborted).
+    pub tools_fuzzed: usize,
+    /// Whether the run stopped early because the server crashed and could not be reconnected.
+    pub aborted: bool,
+}
+
 /// Drives payloads at a server's tools and classifies the responses.
 ///
 /// The engine is a stateless holder of configuration; [`Self::fuzz_tool`] borrows the
@@ -114,6 +135,49 @@ impl FuzzEngine {
     pub const fn with_safe_mode(mut self, safe: bool) -> Self {
         self.safe = safe;
         self
+    }
+
+    /// Fuzz every tool, recovering from crashes so one crashing tool does not abort the run.
+    ///
+    /// When a tool crashes the server, the transport is reconnected before the next tool. If
+    /// reconnection fails, fuzzing stops and [`ServerFuzzOutcome::aborted`] is set — the results
+    /// gathered so far are still returned.
+    ///
+    /// `on_tool` is invoked with each tool's name just before it is fuzzed, for progress reporting.
+    pub fn fuzz_server<T: Transport>(
+        &self,
+        transport: &mut T,
+        tools: &[Value],
+        mut on_tool: impl FnMut(&str),
+    ) -> ServerFuzzOutcome {
+        let mut results = Vec::new();
+        let mut tools_fuzzed = 0;
+        for tool in tools {
+            let name = tool
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            on_tool(name);
+            let tool_results = self.fuzz_tool(transport, tool);
+            let crashed = tool_results
+                .iter()
+                .any(|r| r.category == ResultCategory::Crash);
+            results.extend(tool_results);
+            tools_fuzzed += 1;
+
+            if crashed && transport.reconnect().is_err() {
+                return ServerFuzzOutcome {
+                    results,
+                    tools_fuzzed,
+                    aborted: true,
+                };
+            }
+        }
+        ServerFuzzOutcome {
+            results,
+            tools_fuzzed,
+            aborted: false,
+        }
     }
 
     /// Fuzz a single tool, returning one result per payload fired.
@@ -444,5 +508,84 @@ mod tests {
     fn detect_leak_ignores_benign_text() {
         assert!(detect_leak("here is your token and a secret internal value").is_none());
         assert!(detect_leak("AKIAIOSFODNN7EXAMPLE").is_some());
+    }
+
+    /// A transport that crashes on the first call, then heals after a reconnect.
+    struct CrashOnceTransport {
+        alive: bool,
+        reconnects: usize,
+    }
+
+    impl Transport for CrashOnceTransport {
+        fn call_tool(&mut self, _t: &str, _a: Value) -> Result<Value, TransportError> {
+            if self.alive {
+                Ok(json!({"content": [{"type":"text","text":"ok"}]}))
+            } else {
+                Err(TransportError::ConnectionLost)
+            }
+        }
+        fn reconnect(&mut self) -> Result<(), TransportError> {
+            self.reconnects += 1;
+            self.alive = true;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn fuzz_server_recovers_from_a_crash_and_continues() {
+        let mut t = CrashOnceTransport {
+            alive: false,
+            reconnects: 0,
+        };
+        let tools = vec![string_tool(), string_tool()];
+        let outcome = FuzzEngine::new(0).fuzz_server(&mut t, &tools, |_| {});
+
+        assert!(
+            !outcome.aborted,
+            "reconnect succeeded, so the run should not abort"
+        );
+        assert_eq!(outcome.tools_fuzzed, 2, "both tools should be reached");
+        assert_eq!(
+            t.reconnects, 1,
+            "the crash should trigger exactly one reconnect"
+        );
+        // First tool crashed; second tool (post-reconnect) was accepted.
+        assert!(
+            outcome
+                .results
+                .iter()
+                .any(|r| r.category == ResultCategory::Crash)
+        );
+        assert!(
+            outcome
+                .results
+                .iter()
+                .any(|r| r.category == ResultCategory::Accepted)
+        );
+    }
+
+    /// A transport that stays dead and cannot reconnect.
+    struct DeadTransport;
+
+    impl Transport for DeadTransport {
+        fn call_tool(&mut self, _t: &str, _a: Value) -> Result<Value, TransportError> {
+            Err(TransportError::ConnectionLost)
+        }
+    }
+
+    #[test]
+    fn fuzz_server_aborts_when_reconnect_is_unsupported() {
+        let mut t = DeadTransport;
+        let tools = vec![string_tool(), string_tool(), string_tool()];
+        let outcome = FuzzEngine::new(0).fuzz_server(&mut t, &tools, |_| {});
+
+        assert!(
+            outcome.aborted,
+            "an unrecoverable crash should abort the run"
+        );
+        assert_eq!(
+            outcome.tools_fuzzed, 1,
+            "the run should stop after the first crashing tool"
+        );
     }
 }
