@@ -3,7 +3,7 @@
 //! Ignored by default because it requires `npx` and network access. Run with:
 //! `cargo test --test integration -- --ignored`.
 
-use mcp_guard::fuzzer::{FuzzEngine, ResultCategory};
+use mcp_guard::fuzzer::{FuzzEngine, ResultCategory, Transport};
 use mcp_guard::transport::StdioTransport;
 
 #[test]

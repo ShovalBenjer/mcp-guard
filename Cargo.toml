@@ -1,6 +1,6 @@
 [package]
 name = "mcp-guard"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Adversarial fuzzer for MCP servers — send real payloads and classify the responses"
@@ -24,11 +24,14 @@ serde_json = "1"
 clap = { version = "4", features = ["derive"] }
 thiserror = "2"
 serde_yaml = { version = "0.9", optional = true }
+ureq = { version = "3", optional = true }
 
 [features]
 default = []
 # Opt-in YAML config support. The default install stays lean (JSON config only).
 yaml = ["dep:serde_yaml"]
+# Opt-in networked (streamable HTTP) transport.
+http = ["dep:ureq"]
 
 [lints.rust]
 unsafe_code = "forbid"

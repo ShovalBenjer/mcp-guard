@@ -8,7 +8,7 @@
 | **Last updated** | 2026-06-28 |
 | **Owner** | Shoval Benjer |
 | **Implementation** | Rust (edition 2024, MSRV 1.85) — ported from the Python prototype in v0.3.0 |
-| **Current release** | v0.3.1 |
+| **Current release** | v0.4.0 |
 | **Target** | v1.0 (general availability) |
 
 ### Resolved decisions
@@ -72,7 +72,8 @@ The product was ported from the Python prototype to **Rust** in v0.3.0 (single s
 `#![forbid(unsafe_code)]`, clippy `pedantic`+`nursery` clean, `cargo fmt` enforced). Verified
 and reproducible today:
 
-- **Transport:** stdio (subprocess + JSON-RPC handshake).
+- **Transports:** stdio (subprocess + JSON-RPC handshake); streamable HTTP behind the `http` feature (JSON and SSE responses, `Mcp-Session-Id` handling, `--header` auth passthrough).
+- **Authorization gate (FR-R3 — done):** non-loopback HTTP targets are refused without `--i-have-authorization`; safe mode is forced on for remote targets (override with `--unsafe`).
 - **Subcommands:** `fuzz` (dynamic), `scan` (static schema heuristics).
 - **Probes:** 5 types, 35 distinct payloads — shell injection (8), SSRF (8), overflow (5), type confusion (6+), prompt injection (6). 25 payloads fired per plain string param, 33 per URI string param, 24 for no-schema tools.
 - **Custom payloads:** `--payloads <file>` merges user payloads and probe toggles (JSON in core, YAML behind the `yaml` feature). User `evidence.contains` matchers can promote an accepted response to a finding. *(FR-P1 — done.)*
@@ -86,12 +87,11 @@ and reproducible today:
 - **Verified results:** server-memory (0 findings / 41 accepted / 50 rejected), server-filesystem (0 / 24 / 466), both 0 crashes — identical to the Python baseline.
 
 ### Known limitations (drive the roadmap)
-1. stdio only — no SSE / HTTP.
-2. Single-parameter payloads — no multi-field injection chains.
-3. Heuristic leak detection — signature-based; novel leak formats read as `ACCEPTED`.
-4. Stateful drift — write-capable servers change their own results across runs.
-5. No consent gate for destructive payloads against third-party targets (safe mode exists; auto-gating does not).
-6. Blocking reads — a hung (non-crashing) server is not yet bounded by a read timeout.
+1. Single-parameter payloads — no multi-field injection chains.
+2. Heuristic leak detection — signature-based; novel leak formats read as `ACCEPTED`.
+3. Stateful drift — write-capable servers change their own results across runs.
+4. HTTP transport handles request/response (incl. SSE-framed replies); it does not yet consume a long-lived server-initiated SSE stream (GET channel).
+5. stdio blocking reads — a hung (non-crashing) stdio server is not yet bounded by a read timeout (HTTP requests are timeout-bounded).
 
 ---
 
@@ -110,13 +110,12 @@ and reproducible today:
 Priorities: **P0** = required for v1.0, **P1** = strongly desired, **P2** = nice-to-have / post-1.0. Each requirement lists acceptance criteria (AC).
 
 ### 7.1 Transports
-- **FR-T1 (P0) — SSE transport.** Connect to MCP servers over Server-Sent Events.
-  - AC: `fuzz --transport sse --url <endpoint>` completes a handshake, enumerates tools, and fuzzes them; covered by an integration test against a local SSE fixture.
-- **FR-T2 (P0) — Streamable HTTP transport.** Support the streamable-HTTP transport per current MCP spec.
-  - AC: same flow as FR-T1 over HTTP; honors auth headers via `--header`.
-- **FR-T3 (P1) — Auth passthrough.** Allow bearer tokens / custom headers / env-based secrets for authenticated servers.
-  - AC: secrets are never echoed to stdout/stderr or written into reports.
-- **FR-T4 (P1) — Transport auto-detect.** Infer transport from the argument shape (command vs URL) with an explicit `--transport` override.
+- **FR-T2 (P0) — Streamable HTTP transport. ✅ Done (v0.4.0).** Support the streamable-HTTP transport per the current MCP spec.
+  - AC: `fuzz --url <endpoint>` completes a handshake, enumerates tools, and fuzzes them; `application/json` and SSE-framed (`text/event-stream`) responses are both parsed; `Mcp-Session-Id` is captured and echoed. *(Met — verified by an integration test against an in-process stub covering both response types.)*
+- **FR-T1 (P1) — Long-lived SSE stream.** Consume a server-initiated SSE (GET) channel in addition to request/response replies. *(Deferred — request/response SSE replies are handled; the persistent GET stream is not yet.)*
+- **FR-T3 (P1) — Auth passthrough. ✅ Done (v0.4.0).** Custom headers via repeatable `--header "Name: Value"`.
+  - AC: headers are attached to every request; secrets are never echoed into reports. *(Met.)*
+- **FR-T4 (P1) — Transport auto-detect. ✅ Done (v0.4.0).** `--url` implies the HTTP transport; `--transport` overrides explicitly.
 
 ### 7.2 Probe & payload engine
 - **FR-P1 (P0) — Custom payloads via config. ✅ Done (v0.3.0).** Load additional payloads/probes from a JSON file (YAML behind the `yaml` feature). Per Q3, JSON is core (no extra dependency); YAML is an opt-in extra.
@@ -141,10 +140,9 @@ Priorities: **P0** = required for v1.0, **P1** = strongly desired, **P2** = nice
 ### 7.4 Reliability & safety
 - **FR-R1 (P0) — Crash recovery. ✅ Done (v0.3.1).** On lost transport, record the crash, respawn/reconnect, and continue with the remaining tools.
   - AC: a fixture server that exits on a specific payload still yields results for all other tools. *(Met — verified with a stub server: the crashing tool's results are recorded, the transport respawns, and subsequent tools are fuzzed. Recovery is at the tool boundary; payloads remaining within the crashing tool are not retried.)*
-- **FR-R2 (P0) — Safe mode for destructive payloads.** A `--safe` mode (default on for non-localhost / third-party targets) substitutes inert markers for destructive payloads (`; rm -rf /` → tagged sentinel) so mcp-guard never induces real data loss it can avoid.
-  - AC: in safe mode no payload contains a literally destructive command; `--unsafe` is required to send raw destructive payloads and prints a warning.
-- **FR-R3 (P0) — Third-party consent gate.** Fuzzing a target that isn't localhost/loopback requires explicit `--i-have-authorization` (or config equivalent) and prints a responsible-use notice.
-  - AC: without the flag, non-local targets are refused with a clear message.
+- **FR-R2 (P0) — Safe mode for destructive payloads.** `--safe` caps oversized payloads and is forced on for remote targets (override with `--unsafe`). *(Partial — size caps done; substituting inert sentinels for literally-destructive shell payloads is still pending.)*
+- **FR-R3 (P0) — Third-party consent gate. ✅ Done (v0.4.0).** Fuzzing a non-loopback HTTP target requires explicit `--i-have-authorization` and prints a responsible-use notice.
+  - AC: without the flag, non-local targets are refused with a clear message. *(Met; loopback detection is unit-tested.)*
 - **FR-R4 (P1) — Rate limiting / adaptive throttle.** Beyond `--delay-ms`, support adaptive backoff on rising latency or error bursts.
 - **FR-R5 (P1) — Per-tool timeout & overall budget.** Honor `--timeout` per call and a global `--max-duration`.
 
@@ -257,8 +255,8 @@ Planned evolution:
 | Release | Theme | Scope (FR IDs) |
 |---|---|---|
 | **v0.3** ✅ | Rust port + extensibility + reliability | Rust rewrite, FR-C1✓, FR-P1✓, FR-A1✓, FR-R1✓, FR-C2✓, partial FR-R2 (`--safe`), NFR-4/-7 |
-| **v0.4** | Networked transports + safety | FR-T1, FR-T2, FR-T3, FR-R2, FR-R3, FR-R4 |
-| **v0.5** | Trust & reliability | FR-C3, FR-C4, FR-P2, FR-P3, FR-O1, read-timeout |
+| **v0.4** ✅ | Networked transport + safety | FR-T2✓, FR-T3✓, FR-T4✓, FR-R3✓, partial FR-R2 (`--safe` for remote) |
+| **v0.5** | Trust & reliability | FR-C3, FR-C4, FR-P2, FR-P3, FR-O1, FR-T1 (SSE GET), FR-R4, read-timeout |
 | **v0.6** | CI & reporting | FR-CI1, FR-CI2, FR-O2✓, FR-O3, FR-O4, FR-D1 |
 | **v1.0** | GA hardening | All P0 complete; docs, stable JSON/API, leaderboard process (FR-L1), responsible-use defaults |
 | **post-1.0** | Reach | FR-P4, FR-P5, FR-C5, FR-CI3, FR-D2, FR-L2, hosted track (§13) |

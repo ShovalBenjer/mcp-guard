@@ -148,6 +148,22 @@ mcp-guard fuzz --delay-ms 50 -- npx -y @modelcontextprotocol/server-memory
 mcp-guard scan -- npx -y @modelcontextprotocol/server-memory
 ```
 
+### HTTP transport
+
+Build with `--features http` to fuzz servers over streamable HTTP (JSON and SSE responses are both handled):
+
+```bash
+cargo build --release --features http
+
+# Local server — no authorization needed
+mcp-guard fuzz --url http://localhost:8080/mcp
+
+# Authenticated server, with a header
+mcp-guard fuzz --url http://localhost:8080/mcp --header "Authorization: Bearer $TOKEN"
+```
+
+**Authorization gate.** Any target that isn't loopback (`localhost`/`127.0.0.0/8`/`::1`) is refused unless you pass `--i-have-authorization`, and safe mode is forced on for remote targets (override with `--unsafe`). Only fuzz servers you are permitted to test.
+
 **Exit codes.** `2` = crashes found, `1` = error talking to the server (or a soft failure under `--fail-on`), `0` = clean. `--fail-on {crash,finding,accepted,none}` (default `crash`) chooses which result category makes the run fail — e.g. `--fail-on finding` fails on evidence-backed leaks, `--fail-on none` never fails.
 
 **Crash recovery.** If one tool crashes the server, mcp-guard restarts it and continues fuzzing the remaining tools rather than aborting the whole run.
@@ -214,7 +230,8 @@ Crashes become SARIF `error`s, leaks become `warning`s, and accepted-without-val
 src/
   fuzzer.rs      # Core fuzz engine — payload delivery + response classification
   payloads.rs    # 35 adversarial payloads across 5 probe types
-  transport.rs   # MCP stdio transport (JSON-RPC handshake)
+  transport.rs   # MCP transports: stdio, and streamable HTTP (feature = "http")
+  net.rs         # URL / SSE helpers + loopback detection for the authz gate
   scanner.rs     # Static schema analysis (OWASP-style heuristics)
   report.rs      # Output formatters: table, JSON, SARIF
   config.rs      # Custom payloads / probe toggles (JSON; YAML behind a feature)
@@ -226,7 +243,6 @@ src/
 
 ## Limitations
 
-- **Stdio transport only.** SSE / streamable HTTP are on the roadmap.
 - **Single-parameter payloads.** Each payload sets one parameter at a time; multi-field injection chains aren't generated.
 - **Leak detection is heuristic.** `FINDING` matches known leak signatures (stack traces, `/etc/passwd`, private keys, cloud-metadata fields). A novel leak format can read as `ACCEPTED` — review `ACCEPTED` results on security-sensitive tools by hand.
 - **Stateful servers drift.** Tools that write (filesystem, memory) change their own results across runs; fuzz against a fresh sandbox for reproducibility.
@@ -237,8 +253,9 @@ src/
 The full plan — requirements, milestones, and success metrics — lives in the [Product Requirements Document](docs/PRD.md). Near-term highlights:
 
 - [x] Custom payloads via config (JSON in core, YAML behind a feature)
-- [ ] SSE + streamable HTTP transports
-- [ ] Safe mode + authorization gate for third-party targets
+- [x] Crash recovery + `--fail-on` CI gating
+- [x] Streamable HTTP transport (`--features http`) with SSE responses
+- [x] Safe mode + authorization gate for third-party targets
 - [ ] GitHub Action (fuzz on every PR)
 - [ ] Diff mode: compare fuzz results between server versions
 - [ ] MCP server security leaderboard (community submissions)

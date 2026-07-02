@@ -8,7 +8,7 @@
 //! [`ResultCategory::Finding`] requires concrete evidence (a leak signature or a crash).
 //!
 //! ```no_run
-//! use mcp_guard::fuzzer::{FuzzEngine, ResultCategory};
+//! use mcp_guard::fuzzer::{FuzzEngine, ResultCategory, Transport};
 //! use mcp_guard::transport::StdioTransport;
 //!
 //! let mut transport = StdioTransport::spawn(&[
@@ -32,6 +32,7 @@
 pub mod cli;
 pub mod config;
 pub mod fuzzer;
+pub mod net;
 pub mod payloads;
 pub mod report;
 pub mod scanner;

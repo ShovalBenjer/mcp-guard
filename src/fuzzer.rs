@@ -22,10 +22,16 @@ pub enum TransportError {
     Io(#[from] std::io::Error),
 }
 
-/// Anything that can deliver a `tools/call` to an MCP server.
+/// A connection to an MCP server that can enumerate and invoke its tools.
 pub trait Transport {
     /// Invoke `tool_name` with `arguments` and return the JSON-RPC `result`.
     fn call_tool(&mut self, tool_name: &str, arguments: Value) -> Result<Value, TransportError>;
+
+    /// List the tools the server exposes. The default returns an empty list (used by test
+    /// doubles); real transports override it.
+    fn list_tools(&mut self) -> Result<Vec<Value>, TransportError> {
+        Ok(Vec::new())
+    }
 
     /// Re-establish the connection after a crash so fuzzing can continue.
     ///
@@ -144,9 +150,9 @@ impl FuzzEngine {
     /// gathered so far are still returned.
     ///
     /// `on_tool` is invoked with each tool's name just before it is fuzzed, for progress reporting.
-    pub fn fuzz_server<T: Transport>(
+    pub fn fuzz_server(
         &self,
-        transport: &mut T,
+        transport: &mut dyn Transport,
         tools: &[Value],
         mut on_tool: impl FnMut(&str),
     ) -> ServerFuzzOutcome {
@@ -181,7 +187,7 @@ impl FuzzEngine {
     }
 
     /// Fuzz a single tool, returning one result per payload fired.
-    pub fn fuzz_tool<T: Transport>(&self, transport: &mut T, tool: &Value) -> Vec<FuzzResult> {
+    pub fn fuzz_tool(&self, transport: &mut dyn Transport, tool: &Value) -> Vec<FuzzResult> {
         let tool_name = tool
             .get("name")
             .and_then(Value::as_str)
@@ -231,9 +237,9 @@ impl FuzzEngine {
         payloads
     }
 
-    fn fire<T: Transport>(
+    fn fire(
         &self,
-        transport: &mut T,
+        transport: &mut dyn Transport,
         tool_name: &str,
         probe_name: &str,
         payload: &Payload,
