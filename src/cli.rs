@@ -86,6 +86,7 @@ enum Format {
     Table,
     Json,
     Sarif,
+    Markdown,
 }
 
 /// Which result category should make the process exit non-zero.
@@ -271,6 +272,7 @@ fn run_fuzz(args: &FuzzArgs) -> ExitCode {
         Format::Table => report.to_table(&mut stdout),
         Format::Json => report.to_json(&mut stdout),
         Format::Sarif => report.to_sarif(&mut stdout),
+        Format::Markdown => report.to_markdown(&mut stdout),
     };
     if let Err(e) = rendered {
         eprintln!("[!] Failed to write report: {e}");

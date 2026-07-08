@@ -125,32 +125,37 @@ impl FuzzReport {
     }
 
     fn write_verdict(&self, out: &mut impl Write) -> io::Result<()> {
-        if self.crashes() > 0 {
-            writeln!(
-                out,
-                "  VERDICT: VULNERABLE — server crashed on adversarial input"
-            )
-        } else if self.findings() > 0 {
-            writeln!(
-                out,
-                "  VERDICT: {} finding(s) with concrete evidence — investigate",
-                self.findings()
-            )
-        } else if self.accepted() > 0 {
+        if self.crashes() == 0 && self.findings() == 0 && self.accepted() > 0 {
             writeln!(
                 out,
                 "  VERDICT: no confirmed vulnerabilities. {} payload(s) accepted",
                 self.accepted()
             )?;
-            writeln!(
+            return writeln!(
                 out,
                 "           without validation — review input handling."
+            );
+        }
+        writeln!(out, "  VERDICT: {}", self.verdict_text())
+    }
+
+    /// A single-line verdict summary, reused by the markdown report.
+    #[must_use]
+    fn verdict_text(&self) -> String {
+        if self.crashes() > 0 {
+            "VULNERABLE — server crashed on adversarial input".to_owned()
+        } else if self.findings() > 0 {
+            format!(
+                "{} finding(s) with concrete evidence — investigate",
+                self.findings()
+            )
+        } else if self.accepted() > 0 {
+            format!(
+                "No confirmed vulnerabilities. {} payload(s) accepted without validation.",
+                self.accepted()
             )
         } else {
-            writeln!(
-                out,
-                "  VERDICT: CLEAN — every adversarial payload was rejected"
-            )
+            "CLEAN — every adversarial payload was rejected".to_owned()
         }
     }
 
@@ -237,10 +242,62 @@ impl FuzzReport {
         });
         writeln!(out, "{}", serde_json::to_string_pretty(&sarif)?)
     }
+
+    /// Render a Markdown report suitable for a PR comment.
+    pub fn to_markdown(&self, out: &mut impl Write) -> io::Result<()> {
+        writeln!(out, "## mcp-guard fuzz report: `{}`\n", self.server_command)?;
+        writeln!(out, "| Metric | Count |")?;
+        writeln!(out, "|---|---:|")?;
+        writeln!(out, "| Tools fuzzed | {} |", self.tools_fuzzed)?;
+        writeln!(out, "| Payloads sent | {} |", self.total_payloads)?;
+        writeln!(out, "| Crashes | {} |", self.crashes())?;
+        writeln!(out, "| Findings | {} |", self.findings())?;
+        writeln!(out, "| Accepted | {} |", self.accepted())?;
+        writeln!(out, "| Rejected | {} |", self.rejected())?;
+        writeln!(out, "\n**Verdict:** {}", self.verdict_text())?;
+        self.md_section(out, "Crashes", ResultCategory::Crash, usize::MAX)?;
+        self.md_section(out, "Findings", ResultCategory::Finding, 50)?;
+        Ok(())
+    }
+
+    fn md_section(
+        &self,
+        out: &mut impl Write,
+        title: &str,
+        category: ResultCategory,
+        limit: usize,
+    ) -> io::Result<()> {
+        let rows: Vec<_> = self.by_category(category).collect();
+        if rows.is_empty() {
+            return Ok(());
+        }
+        writeln!(out, "\n### {title}\n")?;
+        writeln!(out, "| Severity | Tool | Rule | Payload |")?;
+        writeln!(out, "|---|---|---|---|")?;
+        for r in rows.iter().take(limit) {
+            writeln!(
+                out,
+                "| {} | `{}` | {} | `{}` |",
+                r.severity.to_uppercase(),
+                r.tool_name,
+                r.rule_id,
+                md_cell(&truncate(&r.payload_value.to_string(), 60)),
+            )?;
+        }
+        if rows.len() > limit {
+            writeln!(out, "\n_… and {} more_", rows.len() - limit)?;
+        }
+        Ok(())
+    }
 }
 
 fn truncate(s: &str, max: usize) -> String {
     s.chars().take(max).collect()
+}
+
+/// Escape the characters that would break a Markdown table cell.
+fn md_cell(s: &str) -> String {
+    s.replace('|', "\\|").replace('\n', " ")
 }
 
 #[cfg(test)]
@@ -296,5 +353,28 @@ mod tests {
             .unwrap();
         let text = String::from_utf8(buf).unwrap();
         assert!(text.contains("CLEAN"));
+    }
+
+    #[test]
+    fn markdown_has_summary_and_verdict() {
+        let mut buf = Vec::new();
+        report_with(ResultCategory::Accepted)
+            .to_markdown(&mut buf)
+            .unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.contains("| Accepted | 1 |"));
+        assert!(text.contains("**Verdict:**"));
+        assert!(text.contains("No confirmed vulnerabilities"));
+    }
+
+    #[test]
+    fn markdown_lists_findings_and_escapes_pipes() {
+        let mut report = report_with(ResultCategory::Finding);
+        report.results[0].payload_value = json!("a|b");
+        let mut buf = Vec::new();
+        report.to_markdown(&mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(text.contains("### Findings"));
+        assert!(text.contains("a\\|b"), "pipes in payloads must be escaped");
     }
 }

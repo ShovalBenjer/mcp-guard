@@ -135,6 +135,9 @@ mcp-guard fuzz --format json -- npx -y @modelcontextprotocol/server-filesystem /
 # SARIF for the GitHub Security tab
 mcp-guard fuzz --format sarif -- npx -y @modelcontextprotocol/server-github
 
+# Markdown report (for PR comments)
+mcp-guard fuzz --format markdown -- npx -y @modelcontextprotocol/server-memory
+
 # Safe mode: cap destructive/oversized payloads
 mcp-guard fuzz --safe -- npx -y @modelcontextprotocol/server-memory
 
@@ -210,19 +213,29 @@ for tool in transport.list_tools()? {
 
 ## CI Integration
 
+Use the bundled GitHub Action:
+
 ```yaml
-- name: Security fuzz
-  run: |
-    cargo install --git https://github.com/ShovalBenjer/mcp-guard
-    mkdir -p /tmp/sandbox
-    mcp-guard fuzz --format sarif -- npx -y @myorg/mcp-server > results.sarif
+- name: Fuzz the MCP server
+  uses: ShovalBenjer/mcp-guard@main
+  with:
+    command: "npx -y @myorg/mcp-server"   # or: url: http://localhost:8080/mcp
+    format: sarif
+    fail-on: crash                         # crash | finding | accepted | none
+    output-file: results.sarif
 - name: Upload SARIF
   uses: github/codeql-action/upload-sarif@v3
   with:
     sarif_file: results.sarif
 ```
 
-Crashes become SARIF `error`s, leaks become `warning`s, and accepted-without-validation results become `note`s.
+Crashes become SARIF `error`s, leaks become `warning`s, and accepted-without-validation results become `note`s. Prefer `format: markdown` to post a report into a PR comment. Or call the binary directly:
+
+```yaml
+- run: |
+    cargo install --git https://github.com/ShovalBenjer/mcp-guard --locked
+    mcp-guard fuzz --format sarif -- npx -y @myorg/mcp-server > results.sarif
+```
 
 ## Architecture
 
@@ -256,7 +269,7 @@ The full plan — requirements, milestones, and success metrics — lives in the
 - [x] Crash recovery + `--fail-on` CI gating
 - [x] Streamable HTTP transport (`--features http`) with SSE responses
 - [x] Safe mode + authorization gate for third-party targets
-- [ ] GitHub Action (fuzz on every PR)
+- [x] GitHub Action + Markdown report (fuzz on every PR)
 - [ ] Diff mode: compare fuzz results between server versions
 - [ ] MCP server security leaderboard (community submissions)
 

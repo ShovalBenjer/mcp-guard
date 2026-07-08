@@ -8,7 +8,7 @@
 | **Last updated** | 2026-06-28 |
 | **Owner** | Shoval Benjer |
 | **Implementation** | Rust (edition 2024, MSRV 1.85) — ported from the Python prototype in v0.3.0 |
-| **Current release** | v0.4.0 |
+| **Current release** | v0.4.1 |
 | **Target** | v1.0 (general availability) |
 
 ### Resolved decisions
@@ -81,7 +81,8 @@ and reproducible today:
 - **Crash recovery (FR-R1 — done):** a tool that crashes the server triggers a transport respawn so the remaining tools are still fuzzed; the run only aborts if the server can't be restarted.
 - **CI gating (FR-C2 — done):** `--fail-on {crash,finding,accepted,none}` selects which category makes the process exit non-zero.
 - **Classification:** `REJECTED` / `ACCEPTED` / `FINDING` (evidence-backed) / `CRASH` / `ERROR`.
-- **Output:** table, JSON, SARIF; progress on stderr, data on stdout.
+- **Output:** table, JSON, SARIF, Markdown; progress on stderr, data on stdout.
+- **GitHub Action (FR-CI1 — done):** a composite `action.yml` installs mcp-guard and runs a fuzz with configurable transport, format, and `fail-on`, optionally writing to a file for SARIF upload or PR comments.
 - **Exit codes:** 2 = crashes, 1 = transport error or soft failure (per `--fail-on`), 0 = clean.
 - **Quality gates:** `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` (unit + ignored live integration test) in CI.
 - **Verified results:** server-memory (0 findings / 41 accepted / 50 rejected), server-filesystem (0 / 24 / 466), both 0 crashes — identical to the Python baseline.
@@ -149,13 +150,13 @@ Priorities: **P0** = required for v1.0, **P1** = strongly desired, **P2** = nice
 ### 7.5 Reporting & output
 - **FR-O1 (P0) — Stable JSON schema.** Versioned, documented JSON output with the `accepted` bucket; backward-compatible within a major version.
 - **FR-O2 (P0) — SARIF correctness.** Valid SARIF 2.1.0: crash→`error`, finding→`warning`, accepted→`note`; uploads cleanly to the GitHub Security tab.
-- **FR-O3 (P1) — Markdown/HTML report.** Human-readable report artifact suitable for PR comments and sharing.
+- **FR-O3 (P1) — Markdown report. ✅ Done (v0.4.1).** `--format markdown` renders a GitHub-flavored summary table + findings tables suitable for PR comments (table-cell pipes escaped). *(Met; unit-tested.)*
 - **FR-O4 (P1) — Reproduction steps.** Each result includes a copy-pasteable repro (tool, param, exact payload, transport invocation).
 - **FR-O5 (P2) — Severity normalization.** Map findings to a documented severity rubric (CVSS-like or qualitative) consistently across probes.
 
 ### 7.6 CI/CD integration
-- **FR-CI1 (P0) — Official GitHub Action.** A `uses:`-able action that installs, runs `fuzz`, and surfaces results.
-  - AC: documented action runs against a sample server, fails the job per `--fail-on`, and can upload SARIF.
+- **FR-CI1 (P0) — Official GitHub Action. ✅ Done (v0.4.1).** A `uses:`-able composite action (`action.yml`) that installs mcp-guard and runs `fuzz`.
+  - AC: configurable transport (`command`/`url`), `format`, `fail-on`, `headers`, `safe`, `authorized`, and `output-file`; fails the job per `--fail-on` and can write SARIF for upload. *(Met — arg-building verified against the real binary.)*
 - **FR-CI2 (P1) — PR annotations.** Post a concise summary (and optionally inline findings) as a PR comment.
 - **FR-CI3 (P2) — Baseline / suppression file.** Allow known-accepted results to be baselined so CI only flags new deltas.
 
@@ -256,8 +257,9 @@ Planned evolution:
 |---|---|---|
 | **v0.3** ✅ | Rust port + extensibility + reliability | Rust rewrite, FR-C1✓, FR-P1✓, FR-A1✓, FR-R1✓, FR-C2✓, partial FR-R2 (`--safe`), NFR-4/-7 |
 | **v0.4** ✅ | Networked transport + safety | FR-T2✓, FR-T3✓, FR-T4✓, FR-R3✓, partial FR-R2 (`--safe` for remote) |
+| **v0.4.1** ✅ | Reporting & CI | FR-O3✓ (Markdown), FR-CI1✓ (GitHub Action) |
 | **v0.5** | Trust & reliability | FR-C3, FR-C4, FR-P2, FR-P3, FR-O1, FR-T1 (SSE GET), FR-R4, read-timeout |
-| **v0.6** | CI & reporting | FR-CI1, FR-CI2, FR-O2✓, FR-O3, FR-O4, FR-D1 |
+| **v0.6** | CI & reporting | FR-CI2, FR-O4, FR-D1 |
 | **v1.0** | GA hardening | All P0 complete; docs, stable JSON/API, leaderboard process (FR-L1), responsible-use defaults |
 | **post-1.0** | Reach | FR-P4, FR-P5, FR-C5, FR-CI3, FR-D2, FR-L2, hosted track (§13) |
 

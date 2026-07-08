@@ -1,0 +1,82 @@
+name: "mcp-guard"
+description: "Adversarially fuzz an MCP server and gate CI on the result."
+branding:
+  icon: "shield"
+  color: "red"
+
+inputs:
+  command:
+    description: "stdio server command, e.g. 'npx -y @modelcontextprotocol/server-memory'. Ignored when 'url' is set."
+    required: false
+    default: ""
+  url:
+    description: "HTTP endpoint URL. Selects the HTTP transport (installs the 'http' feature)."
+    required: false
+    default: ""
+  format:
+    description: "Output format: table | json | sarif | markdown."
+    required: false
+    default: "sarif"
+  fail-on:
+    description: "Which result category fails the job: crash | finding | accepted | none."
+    required: false
+    default: "crash"
+  output-file:
+    description: "Write the report to this file instead of the step log (e.g. results.sarif)."
+    required: false
+    default: ""
+  headers:
+    description: "Newline-separated 'Name: Value' request headers for the HTTP transport."
+    required: false
+    default: ""
+  safe:
+    description: "Set to 'true' to cap destructive/oversized payloads."
+    required: false
+    default: "false"
+  authorized:
+    description: "Set to 'true' to confirm authorization to fuzz a non-local HTTP target."
+    required: false
+    default: "false"
+  version:
+    description: "Git ref (branch, tag, or commit) of mcp-guard to install."
+    required: false
+    default: "main"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install mcp-guard
+      shell: bash
+      run: |
+        set -euo pipefail
+        features=""
+        if [ -n "${{ inputs.url }}" ]; then features="--features http"; fi
+        cargo install --git https://github.com/ShovalBenjer/mcp-guard \
+          --rev "${{ inputs.version }}" --locked $features
+
+    - name: Run mcp-guard
+      shell: bash
+      run: |
+        set -euo pipefail
+        args=(fuzz --format "${{ inputs.format }}" --fail-on "${{ inputs.fail-on }}")
+        [ "${{ inputs.safe }}" = "true" ] && args+=(--safe)
+        [ "${{ inputs.authorized }}" = "true" ] && args+=(--i-have-authorization)
+        while IFS= read -r header; do
+          [ -n "$header" ] && args+=(--header "$header")
+        done <<< "${{ inputs.headers }}"
+
+        if [ -n "${{ inputs.url }}" ]; then
+          args+=(--url "${{ inputs.url }}")
+        elif [ -n "${{ inputs.command }}" ]; then
+          read -ra server_cmd <<< "${{ inputs.command }}"
+          args+=(-- "${server_cmd[@]}")
+        else
+          echo "::error::mcp-guard action: provide either 'command' (stdio) or 'url' (http)."
+          exit 1
+        fi
+
+        if [ -n "${{ inputs.output-file }}" ]; then
+          mcp-guard "${args[@]}" > "${{ inputs.output-file }}"
+        else
+          mcp-guard "${args[@]}"
+        fi
