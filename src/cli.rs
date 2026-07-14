@@ -1,11 +1,13 @@
 //! Command-line interface: `fuzz` and `scan` subcommands.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
+use serde_json::Value;
 
 use crate::config::PayloadConfig;
+use crate::diff;
 use crate::fuzzer::{FuzzEngine, Transport};
 use crate::net;
 use crate::report::FuzzReport;
@@ -26,6 +28,22 @@ enum Command {
     Fuzz(FuzzArgs),
     /// Static security scan of MCP tool schemas (no payloads sent).
     Scan(ScanArgs),
+    /// Diff two fuzz JSON reports; gate CI on newly-introduced results.
+    Diff(DiffArgs),
+}
+
+#[derive(Parser)]
+struct DiffArgs {
+    /// Output format.
+    #[arg(long, value_enum, default_value_t = Format::Table)]
+    format: Format,
+    /// Which newly-introduced category fails the run (default: finding).
+    #[arg(long = "fail-on", value_enum, default_value_t = FailOn::Finding)]
+    fail_on: FailOn,
+    /// Baseline fuzz report (`--format json`).
+    baseline: PathBuf,
+    /// Current fuzz report (`--format json`).
+    current: PathBuf,
 }
 
 #[derive(Parser)]
@@ -126,9 +144,10 @@ pub fn run() -> ExitCode {
     match cli.command {
         Some(Command::Fuzz(args)) => run_fuzz(&args),
         Some(Command::Scan(args)) => run_scan(&args),
+        Some(Command::Diff(args)) => run_diff(&args),
         None => {
             eprintln!(
-                "mcp-guard {}: specify a subcommand (fuzz or scan). Try --help.",
+                "mcp-guard {}: specify a subcommand (fuzz, scan, or diff). Try --help.",
                 crate::VERSION
             );
             ExitCode::from(1)
@@ -344,6 +363,51 @@ fn run_scan(args: &ScanArgs) -> ExitCode {
     }
     println!();
     ExitCode::from(0)
+}
+
+fn load_report(path: &Path) -> Result<Value, ExitCode> {
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        eprintln!("[!] cannot read {}: {e}", path.display());
+        ExitCode::from(1)
+    })?;
+    serde_json::from_str(&text).map_err(|e| {
+        eprintln!("[!] {} is not valid JSON: {e}", path.display());
+        ExitCode::from(1)
+    })
+}
+
+fn run_diff(args: &DiffArgs) -> ExitCode {
+    let baseline = match load_report(&args.baseline) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let current = match load_report(&args.current) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let result = diff::diff(
+        &diff::parse_report(&baseline),
+        &diff::parse_report(&current),
+    );
+
+    let mut stdout = std::io::stdout().lock();
+    let rendered = match args.format {
+        Format::Json => result.to_json(&mut stdout),
+        Format::Markdown => result.to_markdown(&mut stdout),
+        _ => result.to_table(&mut stdout),
+    };
+    if let Err(e) = rendered {
+        eprintln!("[!] Failed to write diff: {e}");
+        return ExitCode::from(1);
+    }
+
+    ExitCode::from(exit_code_for(
+        result.new_in("crash"),
+        result.new_in("finding"),
+        result.new_in("accepted"),
+        args.fail_on,
+    ))
 }
 
 #[cfg(test)]

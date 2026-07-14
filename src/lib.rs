@@ -31,6 +31,7 @@
 
 pub mod cli;
 pub mod config;
+pub mod diff;
 pub mod fuzzer;
 pub mod net;
 pub mod payloads;

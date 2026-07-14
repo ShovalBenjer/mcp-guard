@@ -151,6 +151,18 @@ mcp-guard fuzz --delay-ms 50 -- npx -y @modelcontextprotocol/server-memory
 mcp-guard scan -- npx -y @modelcontextprotocol/server-memory
 ```
 
+### Diff mode (regression gating)
+
+Compare two `--format json` reports and fail CI on newly-introduced results:
+
+```bash
+mcp-guard fuzz --format json -- npx -y @myorg/server > base.json     # committed baseline
+mcp-guard fuzz --format json -- npx -y @myorg/server > current.json  # this build
+mcp-guard diff --fail-on finding base.json current.json              # exit 1 on a new finding
+```
+
+A payload the server used to reject that is now accepted shows up as a **new** result; a fix shows up as **resolved**. `--format markdown` renders it for a PR comment. `--fail-on` defaults to `finding` here (crashes → exit 2, new findings → exit 1).
+
 ### HTTP transport
 
 Build with `--features http` to fuzz servers over streamable HTTP (JSON and SSE responses are both handled):
@@ -270,7 +282,7 @@ The full plan — requirements, milestones, and success metrics — lives in the
 - [x] Streamable HTTP transport (`--features http`) with SSE responses
 - [x] Safe mode + authorization gate for third-party targets
 - [x] GitHub Action + Markdown report (fuzz on every PR)
-- [ ] Diff mode: compare fuzz results between server versions
+- [x] Diff mode: compare fuzz results between server versions
 - [ ] MCP server security leaderboard (community submissions)
 
 ## License

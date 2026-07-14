@@ -8,7 +8,7 @@
 | **Last updated** | 2026-06-28 |
 | **Owner** | Shoval Benjer |
 | **Implementation** | Rust (edition 2024, MSRV 1.85) — ported from the Python prototype in v0.3.0 |
-| **Current release** | v0.4.1 |
+| **Current release** | v0.4.2 |
 | **Target** | v1.0 (general availability) |
 
 ### Resolved decisions
@@ -74,7 +74,8 @@ and reproducible today:
 
 - **Transports:** stdio (subprocess + JSON-RPC handshake); streamable HTTP behind the `http` feature (JSON and SSE responses, `Mcp-Session-Id` handling, `--header` auth passthrough).
 - **Authorization gate (FR-R3 — done):** non-loopback HTTP targets are refused without `--i-have-authorization`; safe mode is forced on for remote targets (override with `--unsafe`).
-- **Subcommands:** `fuzz` (dynamic), `scan` (static schema heuristics).
+- **Subcommands:** `fuzz` (dynamic), `scan` (static schema heuristics), `diff` (regression gating).
+- **Diff mode (FR-D1 — done):** `diff <baseline.json> <current.json>` reports new vs resolved results (table/JSON/Markdown) and exits non-zero on newly-introduced categories per `--fail-on` (default `finding`).
 - **Probes:** 5 types, 35 distinct payloads — shell injection (8), SSRF (8), overflow (5), type confusion (6+), prompt injection (6). 25 payloads fired per plain string param, 33 per URI string param, 24 for no-schema tools.
 - **Custom payloads:** `--payloads <file>` merges user payloads and probe toggles (JSON in core, YAML behind the `yaml` feature). User `evidence.contains` matchers can promote an accepted response to a finding. *(FR-P1 — done.)*
 - **Safe mode:** `--safe` caps oversized/destructive payloads (partial FR-R2; consent gate FR-R3 still pending).
@@ -161,8 +162,8 @@ Priorities: **P0** = required for v1.0, **P1** = strongly desired, **P2** = nice
 - **FR-CI3 (P2) — Baseline / suppression file.** Allow known-accepted results to be baselined so CI only flags new deltas.
 
 ### 7.7 Diff mode
-- **FR-D1 (P1) — Result diffing.** `diff <baseline.json> <current.json>` reports newly-introduced findings/crashes and resolved ones.
-  - AC: a regression that turns a `REJECTED` into an `ACCEPTED`/`FINDING` is detected and exits non-zero under policy.
+- **FR-D1 (P1) — Result diffing. ✅ Done (v0.4.2).** `diff <baseline.json> <current.json>` reports newly-introduced and resolved results.
+  - AC: a regression that turns a `REJECTED` into an `ACCEPTED`/`FINDING` is detected and exits non-zero under policy. *(Met — a rejected→accepted transition surfaces as a new entry; gating is unit-tested and verified live.)*
 - **FR-D2 (P2) — Trend storage.** Optional append-only history to track a server's posture over versions.
 
 ### 7.8 Leaderboard
@@ -258,8 +259,9 @@ Planned evolution:
 | **v0.3** ✅ | Rust port + extensibility + reliability | Rust rewrite, FR-C1✓, FR-P1✓, FR-A1✓, FR-R1✓, FR-C2✓, partial FR-R2 (`--safe`), NFR-4/-7 |
 | **v0.4** ✅ | Networked transport + safety | FR-T2✓, FR-T3✓, FR-T4✓, FR-R3✓, partial FR-R2 (`--safe` for remote) |
 | **v0.4.1** ✅ | Reporting & CI | FR-O3✓ (Markdown), FR-CI1✓ (GitHub Action) |
+| **v0.4.2** ✅ | Regression gating | FR-D1✓ (diff mode) |
 | **v0.5** | Trust & reliability | FR-C3, FR-C4, FR-P2, FR-P3, FR-O1, FR-T1 (SSE GET), FR-R4, read-timeout |
-| **v0.6** | CI & reporting | FR-CI2, FR-O4, FR-D1 |
+| **v0.6** | CI & reporting | FR-CI2, FR-O4, FR-D2 |
 | **v1.0** | GA hardening | All P0 complete; docs, stable JSON/API, leaderboard process (FR-L1), responsible-use defaults |
 | **post-1.0** | Reach | FR-P4, FR-P5, FR-C5, FR-CI3, FR-D2, FR-L2, hosted track (§13) |
 
