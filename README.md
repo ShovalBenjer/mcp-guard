@@ -7,7 +7,9 @@
 
 # mcp-guard
 
-**Adversarial fuzzer for MCP servers — break them before they break you.**
+**Adversarial fuzzer for MCP servers. Break them before they break you.**
+
+65 findings against Anthropic's official reference servers so far ([leaderboard](LEADERBOARD.md)).
 
 [![CI](https://img.shields.io/github/actions/workflow/status/ShovalBenjer/mcp-guard/ci.yml?branch=main&style=for-the-badge)](https://github.com/ShovalBenjer/mcp-guard/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
@@ -48,11 +50,11 @@
 | **Type confusion** | Wrong types, null for required, arrays for scalars | Missing input validation |
 | **Prompt injection** | DAN override, system prompt extraction, XML injection | Instruction override, prompt leak |
 
-Payloads are **intelligent** — URI params get SSRF probes, string params get injection + overflow, no-schema tools get the full suite.
+Payloads are schema-aware: URI params get SSRF probes, string params get injection plus overflow, no-schema tools get the full suite.
 
 ## Real Results
 
-Tested against **official Anthropic MCP servers**. Not simulated. Not mocked. Real servers, real payloads, real findings.
+Tested against **official Anthropic MCP servers**, real payloads against running servers, output pasted as-is.
 
 [View full leaderboard →](LEADERBOARD.md)
 
@@ -144,7 +146,7 @@ with StdioTransport(["npx", "@modelcontextprotocol/server-memory"]) as transport
 
 ```
 src/mcp_guard/
-  fuzzer.py      # Core fuzz engine — payload delivery + response classification
+  fuzzer.py      # Core fuzz engine: payload delivery + response classification
   payloads.py    # 35 adversarial payloads across 5 probe types
   transport.py   # MCP stdio transport (JSON-RPC handshake)
   scanner.py     # Static schema analysis (OWASP rules)
@@ -164,4 +166,4 @@ Zero external dependencies. Python 3.11+ stdlib only.
 
 ## License
 
-[MIT](LICENSE) — Shoval Benjer
+[MIT](LICENSE), Shoval Benjer
