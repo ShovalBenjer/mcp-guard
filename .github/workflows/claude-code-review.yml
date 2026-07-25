@@ -1,8 +1,7 @@
 name: Claude Code Review
 
 # Always-fresh review: `synchronize` fires on EVERY push to the PR branch, and the
-# concurrency group cancels any in-flight review so each push starts a fresh one
-# (workflow equivalent of "@claude review always" on a Manual-mode repo).
+# concurrency group cancels any in-flight review so each push starts a fresh one.
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
