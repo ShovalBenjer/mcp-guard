@@ -167,4 +167,3 @@ Zero external dependencies. Python 3.11+ stdlib only.
 ## License
 
 [MIT](LICENSE), Shoval Benjer
-# re-triggering kilo code review due to external rate limit
