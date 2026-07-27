@@ -21,7 +21,8 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      # Pinned to v4: v6 introduces breaking changes to the checkout API that are incompatible with this workflow.
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
