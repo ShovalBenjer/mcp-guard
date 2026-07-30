@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .fuzzer import FuzzEngine, ResultCategory
+from .fuzzer import FuzzEngine
 from .report import FuzzReport
 from .scanner import Scanner
 from .transport import StdioTransport
@@ -84,7 +84,7 @@ def _run_fuzz(args: argparse.Namespace) -> None:
     except ConnectionError as e:
         print(f"[!] Connection error: {e}", file=sys.stderr)
         sys.exit(1)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"[!] Error: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -113,7 +113,7 @@ def _run_scan(args: argparse.Namespace) -> None:
                 else:
                     print(f"  [PASS] {name}")
             print()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"[!] Error: {e}", file=sys.stderr)
         sys.exit(1)
 

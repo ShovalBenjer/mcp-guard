@@ -46,6 +46,10 @@ class StdioTransport:
     def _send(self, method: str, params: dict | None = None) -> dict:
         if not self._proc or not self.is_alive:
             raise ConnectionError("Server not running")
+        proc = self._proc
+        assert proc is not None
+        assert proc.stdin is not None
+        assert proc.stdout is not None
 
         self._request_id += 1
         request: dict[str, Any] = {
@@ -57,14 +61,17 @@ class StdioTransport:
             request["params"] = params
 
         line = json.dumps(request) + "\n"
-        self._proc.stdin.write(line)
-        self._proc.stdin.flush()
+        proc.stdin.write(line)
+        proc.stdin.flush()
 
         return self._read_response()
 
     def _notify(self, method: str, params: dict | None = None) -> None:
         if not self._proc or not self.is_alive:
             raise ConnectionError("Server not running")
+        proc = self._proc
+        assert proc is not None
+        assert proc.stdin is not None
 
         notification: dict[str, Any] = {
             "jsonrpc": "2.0",
@@ -74,12 +81,15 @@ class StdioTransport:
             notification["params"] = params
 
         line = json.dumps(notification) + "\n"
-        self._proc.stdin.write(line)
-        self._proc.stdin.flush()
+        proc.stdin.write(line)
+        proc.stdin.flush()
 
     def _read_response(self) -> dict:
+        proc = self._proc
+        assert proc is not None
+        assert proc.stdout is not None
         while True:
-            response_line = self._proc.stdout.readline()
+            response_line = proc.stdout.readline()
             if not response_line:
                 raise ConnectionError("Server closed connection")
             try:

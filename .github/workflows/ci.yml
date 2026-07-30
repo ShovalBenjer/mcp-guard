@@ -13,3 +13,5 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
       - run: pytest tests/ -v --tb=short
+      - run: ruff check
+      - run: mypy src/mcp_guard

@@ -1,5 +1,5 @@
 """RED: First failing test for mcp-guard core scanner."""
-from mcp_guard.scanner import ScanResult, Scanner, Severity
+from mcp_guard.scanner import Scanner, ScanResult, Severity
 
 
 def test_scanner_flags_tool_with_shell_command():
