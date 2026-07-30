@@ -1,10 +1,10 @@
 """RED: Failing tests for adversarial payload generators."""
 from mcp_guard.payloads import (
+    generate_overflow,
+    generate_prompt_injection,
     generate_shell_injection,
     generate_ssrf,
-    generate_overflow,
     generate_type_confusion,
-    generate_prompt_injection,
 )
 
 
@@ -35,7 +35,7 @@ def test_type_confusion_generates_wrong_types():
     payloads = generate_type_confusion(param_type="string")
     assert len(payloads) > 2
     values = [p.value for p in payloads]
-    assert any(isinstance(v, int) or isinstance(v, list) or v is None for v in values)
+    assert any(isinstance(v, (int, list)) or v is None for v in values)
 
 
 def test_prompt_injection_generates_override_payloads():

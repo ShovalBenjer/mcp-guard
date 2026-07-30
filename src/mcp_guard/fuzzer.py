@@ -1,7 +1,7 @@
 """Fuzz engine — orchestrates adversarial payload delivery to MCP tools."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
@@ -56,10 +56,10 @@ class FuzzEngine:
 
     def _fuzz_no_schema(self, tool_name: str) -> list[FuzzResult]:
         from .payloads import (
-            generate_shell_injection,
-            generate_ssrf,
             generate_overflow,
             generate_prompt_injection,
+            generate_shell_injection,
+            generate_ssrf,
         )
         all_payloads = (
             generate_shell_injection()
@@ -89,7 +89,7 @@ class FuzzEngine:
                 severity=payload.severity.value,
                 detail="Server crashed or connection lost after payload",
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return FuzzResult(
                 tool_name=tool_name,
                 probe_name=param_name,

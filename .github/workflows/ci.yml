@@ -14,4 +14,4 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest tests/ -v --tb=short
       - run: ruff check
-      - run: mypy mcp_guard
+      - run: mypy src/mcp_guard
