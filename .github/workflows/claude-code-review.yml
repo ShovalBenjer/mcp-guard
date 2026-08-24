@@ -16,16 +16,17 @@ jobs:
     # Skip drafts; reviews restart when marked ready
     if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - uses: anthropics/claude-code-action@v1
+        continue-on-error: true
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: "github-actions[bot],dependabot[bot],kilo-code-bot"
