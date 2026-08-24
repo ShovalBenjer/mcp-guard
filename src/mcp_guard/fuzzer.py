@@ -1,11 +1,19 @@
 """Fuzz engine — orchestrates adversarial payload delivery to MCP tools."""
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
-from .payloads import Payload, generate_all_for_param
+from .payloads import (
+    Payload,
+    generate_all_for_param,
+    generate_overflow,
+    generate_prompt_injection,
+    generate_shell_injection,
+    generate_ssrf,
+)
 
 
 class ResultCategory(Enum):
@@ -33,10 +41,24 @@ class Transport(Protocol):
 
 class FuzzEngine:
     def __init__(self, transport: Transport, delay_ms: int = 0):
+        """Initialize the fuzz engine with a transport and optional delay.
+
+        Args:
+            transport: The transport to use for calling tools.
+            delay_ms: Delay in milliseconds between payload deliveries.
+        """
         self._transport = transport
         self._delay_ms = delay_ms
 
     def fuzz_tool(self, tool: dict) -> list[FuzzResult]:
+        """Fuzz a single tool using its schema to generate targeted payloads.
+
+        Args:
+            tool: The tool definition dictionary from the MCP server.
+
+        Returns:
+            A list of FuzzResult entries for each payload tested.
+        """
         tool_name = tool.get("name", "unknown")
         schema = tool.get("inputSchema", {})
         properties = schema.get("properties", {})
@@ -55,12 +77,14 @@ class FuzzEngine:
         return results
 
     def _fuzz_no_schema(self, tool_name: str) -> list[FuzzResult]:
-        from .payloads import (
-            generate_overflow,
-            generate_prompt_injection,
-            generate_shell_injection,
-            generate_ssrf,
-        )
+        """Fuzz a tool that has no input schema using generic payloads.
+
+        Args:
+            tool_name: The name of the tool being fuzzed.
+
+        Returns:
+            A list of FuzzResult entries for generic payloads.
+        """
         all_payloads = (
             generate_shell_injection()
             + generate_ssrf()
@@ -76,6 +100,17 @@ class FuzzEngine:
     def _fire_payload(
         self, tool_name: str, param_name: str, payload: Payload, required: set[str]
     ) -> FuzzResult:
+        """Send a single payload to a tool and classify the response.
+
+        Args:
+            tool_name: The name of the tool being targeted.
+            param_name: The parameter name the payload targets.
+            payload: The payload to send.
+            required: Set of required parameter names for the tool.
+
+        Returns:
+            A FuzzResult describing the outcome.
+        """
         args: dict[str, Any] = {param_name: payload.value}
         try:
             response = self._transport.call_tool(tool_name, args)
@@ -89,7 +124,7 @@ class FuzzEngine:
                 severity=payload.severity.value,
                 detail="Server crashed or connection lost after payload",
             )
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, json.JSONDecodeError, RuntimeError) as exc:
             return FuzzResult(
                 tool_name=tool_name,
                 probe_name=param_name,
@@ -105,6 +140,17 @@ class FuzzEngine:
     def _classify_response(
         self, tool_name: str, param_name: str, payload: Payload, response: dict
     ) -> FuzzResult:
+        """Classify the server's response to a payload as safe, finding, or crash.
+
+        Args:
+            tool_name: The name of the tool being targeted.
+            param_name: The parameter name the payload targets.
+            payload: The payload that was sent.
+            response: The JSON-RPC response from the server.
+
+        Returns:
+            A FuzzResult describing the outcome.
+        """
         is_error = response.get("isError", False)
         content = response.get("content", [])
         text = ""
@@ -128,7 +174,21 @@ class FuzzEngine:
         text_lower = text.lower()
         leaked = any(
             kw in text_lower
-            for kw in ("traceback", "exception", "stack trace", "error:", "internal", "password", "secret", "token")
+            for kw in (
+                "traceback",
+                "exception",
+                "stack trace",
+                "error:",
+                "internal",
+                "password",
+                "secret",
+                "api_key",
+                "api-key",
+                "secret_key",
+                "private_key",
+                "database_url",
+                "connection_string",
+            )
         )
         if leaked:
             return FuzzResult(
