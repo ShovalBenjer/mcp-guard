@@ -32,7 +32,37 @@ Results from running [mcp-guard](https://github.com/ShovalBenjer/mcp-guard) agai
 - File-operation tools (`read_file`, `write_file`, `edit_file`) properly validate paths
 - **Severity:** Low-to-medium — the findings are concentrated in tools that ignore input, but the pattern reveals inconsistent input validation across the server
 
-## Methodology
+## Scoring Methodology
+
+Servers are ranked by a composite security score (higher is better):
+
+### Score Formula
+
+```
+security_score = (safe * 1.0 + findings * 0.3 + crashes * 0.0) / total_payloads * 100
+```
+
+| Category | Weight | Rationale |
+|----------|--------|-----------|
+| Safe | 1.0 | Server correctly rejected payload (expected error) |
+| Finding | 0.3 | Server accepted payload without error (potential vulnerability) |
+| Crash | 0.0 | Server died (denial of service, worst outcome) |
+
+### Interpretation
+
+- **90-100:** Excellent — server handles almost all adversarial input safely
+- **70-89:** Good — minor issues, most payloads handled correctly
+- **50-69:** Fair — significant findings, investigation recommended
+- **0-49:** Poor — widespread vulnerability to adversarial input
+
+### Current Scores
+
+| Server | Score | Grade |
+|--------|-------|-------|
+| @modelcontextprotocol/server-filesystem | 96.5% | Excellent |
+| @modelcontextprotocol/server-memory | 67.0% | Fair |
+
+## Test Procedure
 
 Each server was:
 1. Spawned via stdio transport

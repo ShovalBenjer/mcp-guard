@@ -11,13 +11,14 @@
 
 65 findings against Anthropic's official reference servers so far ([leaderboard](LEADERBOARD.md)).
 
+[![Release](https://img.shields.io/badge/version-0.2.1-blue?style=for-the-badge)](https://github.com/ShovalBenjer/mcp-guard/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/ShovalBenjer/mcp-guard/ci.yml?branch=main&style=for-the-badge)](https://github.com/ShovalBenjer/mcp-guard/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge)](LICENSE)
 [![Zero Deps](https://img.shields.io/badge/dependencies-0-green?style=for-the-badge)]()
 [![Findings](https://img.shields.io/badge/findings-65-critical?style=for-the-badge&color=ff3366)](LEADERBOARD.md)
 
-[What It Does](#what-it-does) · [Real Results](#real-results) · [Install](#install) · [Usage](#usage) · [Python API](#python-api) · [Leaderboard](LEADERBOARD.md)
+[What It Does](#what-it-does) · [Real Results](#real-results) · [Install](#install) · [Usage](#usage) · [Python API](#python-api) · [Leaderboard](LEADERBOARD.md) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -37,7 +38,7 @@
 1. Spawns your MCP server via stdio transport
 2. Enumerates all exposed tools
 3. Reads each tool's `inputSchema` and generates **schema-aware adversarial payloads**
-4. Fires 35 payloads per string parameter and classifies every response
+4. Fires targeted payloads per parameter (25 for strings, 8 for URIs, 9 for integers, 24 for no-schema tools) and classifies every response
 5. Reports: `SAFE` / `FINDING` / `CRASH`
 
 ### 5 Probe Types
@@ -50,7 +51,7 @@
 | **Type confusion** | Wrong types, null for required, arrays for scalars | Missing input validation |
 | **Prompt injection** | DAN override, system prompt extraction, XML injection | Instruction override, prompt leak |
 
-Payloads are schema-aware: URI params get SSRF probes, string params get injection plus overflow, no-schema tools get the full suite.
+Payloads are schema-aware: URI params get SSRF probes (8 payloads), string params get injection + overflow + prompt injection (25 payloads), integer params get type confusion + overflow (9 payloads), no-schema tools get the full suite (24 payloads).
 
 ## Real Results
 
@@ -147,7 +148,7 @@ with StdioTransport(["npx", "@modelcontextprotocol/server-memory"]) as transport
 ```
 src/mcp_guard/
   fuzzer.py      # Core fuzz engine: payload delivery + response classification
-  payloads.py    # 35 adversarial payloads across 5 probe types
+  payloads.py    # Adversarial payload generators across 5 probe types
   transport.py   # MCP stdio transport (JSON-RPC handshake)
   scanner.py     # Static schema analysis (OWASP rules)
   report.py      # Output formatters: table, JSON, SARIF
@@ -158,8 +159,10 @@ Zero external dependencies. Python 3.11+ stdlib only.
 
 ## Roadmap
 
+- [x] MCP server security leaderboard (initial results)
+- [x] Static schema scanner (OWASP rules)
+- [x] SARIF output for GitHub Security tab
 - [ ] SSE + streamable HTTP transports
-- [ ] MCP server security leaderboard (community submissions)
 - [ ] Custom payloads via YAML config
 - [ ] GitHub Action (fuzz on every PR)
 - [ ] Diff mode: compare fuzz results between server versions
