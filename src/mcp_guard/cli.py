@@ -10,6 +10,8 @@ from .report import FuzzReport
 from .scanner import Scanner
 from .transport import StdioTransport
 
+logger = logging.getLogger(__name__)
+
 
 def _setup_logging(verbose: bool, quiet: bool) -> None:
     """Configure structured logging based on verbosity flags.
@@ -39,7 +41,7 @@ def main(argv: list[str] | None = None) -> None:
         description="Adversarial fuzzer for MCP servers — break before they break you.",
     )
     parser.add_argument("--output-file", help="Write output to a file instead of stdout")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logger")
     parser.add_argument("--quiet", action="store_true", help="Suppress all non-error output")
     sub = parser.add_subparsers(dest="command")
 
@@ -83,29 +85,29 @@ def _run_fuzz(args: argparse.Namespace) -> None:
     out = _open_output(args.output_file)
     cmd = [a for a in args.server_command if a != "--"]
     if not cmd:
-        logging.error("No MCP server command specified after --")
-        logging.info("Usage: mcp-guard fuzz -- npx @modelcontextprotocol/server-memory")
+        logger.error("No MCP server command specified after --")
+        logger.info("Usage: mcp-guard fuzz -- npx @modelcontextprotocol/server-memory")
         sys.exit(1)
 
-    logging.info("Starting MCP server: %s", " ".join(cmd))
+    logger.info("Starting MCP server: %s", " ".join(cmd))
     try:
         with StdioTransport(cmd, timeout=args.timeout) as transport:
-            logging.info("Connected. Enumerating tools...")
+            logger.info("Connected. Enumerating tools...")
             tools = transport.list_tools()
             if not tools:
-                logging.warning("No tools found on this server.")
+                logger.warning("No tools found on this server.")
                 return
 
-            logging.info("Found %d tools. Generating payloads...", len(tools))
+            logger.info("Found %d tools. Generating payloads...", len(tools))
             all_results: list = []
             engine = FuzzEngine(transport=transport, delay_ms=args.delay_ms)
             total_tools = len(tools)
             for idx, tool in enumerate(tools, 1):
                 name = tool.get("name", "unknown")
                 if total_tools > 5:
-                    logging.info("Fuzzing tool %d/%d: %s", idx, total_tools, name)
+                    logger.info("Fuzzing tool %d/%d: %s", idx, total_tools, name)
                 else:
-                    logging.info("Fuzzing: %s", name)
+                    logger.info("Fuzzing: %s", name)
                 results = engine.fuzz_tool(tool)
                 all_results.extend(results)
 
@@ -128,20 +130,20 @@ def _run_fuzz(args: argparse.Namespace) -> None:
 
             crashes = len(report.crashes)
             if crashes:
-                logging.warning("VERDICT: VULNERABLE — %d crashes detected", crashes)
+                logger.warning("VERDICT: VULNERABLE — %d crashes detected", crashes)
                 sys.exit(2)
             elif report.findings:
-                logging.warning("VERDICT: %d findings require investigation", len(report.findings))
+                logger.warning("VERDICT: %d findings require investigation", len(report.findings))
             else:
-                logging.info("VERDICT: CLEAN — all payloads handled safely")
+                logger.info("VERDICT: CLEAN — all payloads handled safely")
     except ConnectionError as e:
-        logging.error("Connection error: %s", e)
+        logger.error("Connection error: %s", e)
         sys.exit(1)
     except OSError as e:
-        logging.error("OS error: %s", e)
+        logger.error("OS error: %s", e)
         sys.exit(1)
     except Exception as e:  # noqa: BLE001
-        logging.error("Unexpected error: %s", e)
+        logger.error("Unexpected error: %s", e)
         sys.exit(1)
 
 
@@ -149,18 +151,18 @@ def _run_scan(args: argparse.Namespace) -> None:
     out = _open_output(args.output_file)
     cmd = [a for a in args.server_command if a != "--"]
     if not cmd:
-        logging.error("No MCP server command specified after --")
-        logging.info("Usage: mcp-guard scan -- npx @modelcontextprotocol/server-memory")
+        logger.error("No MCP server command specified after --")
+        logger.info("Usage: mcp-guard scan -- npx @modelcontextprotocol/server-memory")
         sys.exit(1)
 
     try:
         with StdioTransport(cmd, timeout=args.timeout) as transport:
             tools = transport.list_tools()
             if not tools:
-                logging.warning("No tools found.")
+                logger.warning("No tools found.")
                 return
 
-            logging.info("Static scan of %d tools:\n", len(tools))
+            logger.info("Static scan of %d tools:\n", len(tools))
             if out is sys.stdout:
                 print(f"\nStatic scan of {len(tools)} tools:\n")
             for tool in tools:
@@ -184,13 +186,13 @@ def _run_scan(args: argparse.Namespace) -> None:
         if out is not sys.stdout:
             out.close()
     except ConnectionError as e:
-        logging.error("Connection error: %s", e)
+        logger.error("Connection error: %s", e)
         sys.exit(1)
     except OSError as e:
-        logging.error("OS error: %s", e)
+        logger.error("OS error: %s", e)
         sys.exit(1)
     except Exception as e:  # noqa: BLE001
-        logging.error("Unexpected error: %s", e)
+        logger.error("Unexpected error: %s", e)
         sys.exit(1)
 
 
