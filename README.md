@@ -9,15 +9,13 @@
 
 **Adversarial fuzzer for MCP servers. Break them before they break you.**
 
-65 findings against Anthropic's official reference servers so far ([leaderboard](LEADERBOARD.md)).
-
 [![CI](https://img.shields.io/github/actions/workflow/status/ShovalBenjer/mcp-guard/ci.yml?branch=main&style=for-the-badge)](https://github.com/ShovalBenjer/mcp-guard/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/mcp-guard?style=for-the-badge)](https://pypi.org/project/mcp-guard/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge)](LICENSE)
-[![Zero Deps](https://img.shields.io/badge/dependencies-0-green?style=for-the-badge)]()
-[![Findings](https://img.shields.io/badge/findings-65-critical?style=for-the-badge&color=ff3366)](LEADERBOARD.md)
+[![Findings](https://img.shields.io/badge/findings-critical-ff3366?style=for-the-badge)](LEADERBOARD.md)
 
-[What It Does](#what-it-does) · [Real Results](#real-results) · [Install](#install) · [Usage](#usage) · [Python API](#python-api) · [Leaderboard](LEADERBOARD.md)
+[What It Does](#what-it-does) · [Real Results](#real-results) · [Install](#install) · [Usage](#usage) · [Python API](#python-api) · [Leaderboard](LEADERBOARD.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -37,7 +35,7 @@
 1. Spawns your MCP server via stdio transport
 2. Enumerates all exposed tools
 3. Reads each tool's `inputSchema` and generates **schema-aware adversarial payloads**
-4. Fires 35 payloads per string parameter and classifies every response
+4. Fires up to **25 payloads per string parameter** (33 for URI-typed parameters) and classifies every response
 5. Reports: `SAFE` / `FINDING` / `CRASH`
 
 ### 5 Probe Types
@@ -144,25 +142,73 @@ with StdioTransport(["npx", "@modelcontextprotocol/server-memory"]) as transport
 
 ## Architecture
 
-```
-src/mcp_guard/
-  fuzzer.py      # Core fuzz engine: payload delivery + response classification
-  payloads.py    # 35 adversarial payloads across 5 probe types
-  transport.py   # MCP stdio transport (JSON-RPC handshake)
-  scanner.py     # Static schema analysis (OWASP rules)
-  report.py      # Output formatters: table, JSON, SARIF
-  cli.py         # CLI: fuzz, scan subcommands
+```mermaid
+graph LR
+    A[MCP Server] -->|stdio JSON-RPC| B[mcp-guard]
+    B -->|adversarial payloads| A
+    B --> C{Scanner}
+    C -->|static analysis| D[Schema Findings]
+    B --> E{FuzzEngine}
+    E -->|dynamic testing| F[Fuzz Results]
+    F --> G[Report]
+    G -->|table| H[CLI Output]
+    G -->|JSON| I[CI Pipeline]
+    G -->|SARIF| J[GitHub Security]
 ```
 
 Zero external dependencies. Python 3.11+ stdlib only.
 
+## Scope
+
+### In Scope (v1)
+
+| Feature | Maturity | Status |
+|---------|----------|--------|
+| Stdio transport (subprocess spawn) | Production | Implemented |
+| Schema-aware payload generation | Production | Implemented |
+| 5 probe types (shell, SSRF, overflow, type confusion, prompt injection) | Production | Implemented |
+| Response classification (SAFE / FINDING / CRASH) | Production | Implemented |
+| CLI (`fuzz`, `scan` subcommands) | Production | Implemented |
+| Output formats (table, JSON, SARIF) | Production | Implemented |
+| Static schema scanner | Beta | Implemented |
+| ConnectionError crash detection | Beta | Implemented |
+
+### Out of Scope (v1)
+
+| Feature | Maturity | Target |
+|---------|----------|--------|
+| SSE transport | Alpha | v0.2.0 |
+| Streamable HTTP transport | Alpha | v0.2.0 |
+| Respawn server between probe groups | Alpha | v0.2.0 |
+| Adaptive throttling / `--delay-ms` config | Alpha | v0.2.0 |
+| Custom payloads via YAML config | Alpha | v0.2.0 |
+| GitHub Action integration | Alpha | v0.2.0 |
+| Diff mode (version comparison) | Alpha | v0.3.0 |
+| Non-determinism tracking | Alpha | v0.3.0 |
+| Protocol version pinning | Alpha | v0.3.0 |
+
 ## Roadmap
 
+- [x] Core fuzz engine with schema-aware payloads
+- [x] Stdio transport with JSON-RPC handshake
+- [x] CLI with table/JSON/SARIF output
+- [x] Static schema scanner
 - [ ] SSE + streamable HTTP transports
 - [ ] MCP server security leaderboard (community submissions)
 - [ ] Custom payloads via YAML config
 - [ ] GitHub Action (fuzz on every PR)
 - [ ] Diff mode: compare fuzz results between server versions
+
+## Methodology
+
+Payload counts follow a schema-aware model. See [LEADERBOARD.md](LEADERBOARD.md#methodology) for the full benchmarking methodology.
+
+| Tool Input | Payloads per Parameter |
+|------------|------------------------|
+| String parameter | 25 |
+| URI-typed string parameter | 33 |
+| Integer / number parameter | 9 |
+| No input schema | 24 |
 
 ## License
 
