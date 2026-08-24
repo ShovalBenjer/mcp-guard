@@ -167,7 +167,7 @@ class StdioTransport:
         result = self._send("initialize", {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "mcp-guard", "version": "0.2.0"},
+            "clientInfo": {"name": "mcp-guard", "version": "0.1.0"},
         })
         self._notify("notifications/initialized")
         return result

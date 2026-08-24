@@ -1,28 +1,114 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.egg
 *.egg-info/
 dist/
 build/
 .eggs/
-*.egg
+.installed.cfg
+*.manifest
+*.spec
+
+# Virtual environments
 .env
 .venv/
 venv/
 env/
+ENV/
+.conda/
+
+# Testing
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
 htmlcov/
+.tox/
+.nox/
 .coverage
 .coverage.*
-*.cover
+.cover
 .nox/
-*.swp
-*.swo
+.swp
+.swo
 .DS_Store
 Thumbs.db
 *.log
 .idea/
 .vscode/
 *.iml
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Linting / type checking
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.pyre/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.project
+.classpath
+.settings/
+
+# Node.js
+node_modules/
+.npm/
+.yarn/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+package-lock.json
+yarn.lock
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+*.lnk
+*.tmp
+*.temp
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Build outputs
+*.tar.gz
+*.zip
+*.whl
+*.tar
+*.rar
+
+# Distribution / packaging
+.Python
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Documentation
+docs/_build/
+site/
+
+# Secrets
+*.pem
+*.key
+*.p12
+*.pfx
+*.p8
