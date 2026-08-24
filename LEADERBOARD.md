@@ -3,7 +3,8 @@
 Results from running [mcp-guard](https://github.com/ShovalBenjer/mcp-guard) against popular MCP servers.
 
 **Last updated: 2026-06-03**
-**mcp-guard version: 0.2.1**
+**mcp-guard version: 0.1.0**
+**Protocol version: 2024-11-05**
 
 ## Rankings
 
@@ -32,19 +33,89 @@ Results from running [mcp-guard](https://github.com/ShovalBenjer/mcp-guard) agai
 - File-operation tools (`read_file`, `write_file`, `edit_file`) properly validate paths
 - **Severity:** Low-to-medium — the findings are concentrated in tools that ignore input, but the pattern reveals inconsistent input validation across the server
 
+---
+
 ## Methodology
 
-Each server was:
-1. Spawned via stdio transport
-2. Enumerated for all tools
-3. Fuzzed with schema-aware adversarial payloads (shell injection, SSRF, overflow, type confusion, prompt injection)
-4. Responses classified: SAFE (expected error), FINDING (accepted without error), CRASH (server died)
+mcp-guard's leaderboard methodology is designed to be reproducible. Every measurement follows the same pipeline.
 
-## Want your server tested?
+### 1. Payload Counting
+
+Payloads are counted per tool call, not per parameter. The total payload count for a server is the sum of payloads sent across all tools.
+
+| Tool Input Type | Payloads per Parameter |
+|-----------------|------------------------|
+| String parameter | 25 |
+| URI-typed string parameter | 33 |
+| Integer / number parameter | 9 |
+| No input schema | 24 |
+
+**Calculation example**: A server with 3 tools, each having one string parameter, produces `3 × 25 = 75` total payloads.
+
+Payloads are schema-aware:
+- String parameters receive shell injection (8), prompt injection (6), overflow subset (3), and type confusion (8) payloads.
+- URI parameters receive the above string payloads plus SSRF (8).
+- No-schema tools receive shell injection (8), SSRF (8), overflow subset (2), and prompt injection (6).
+- Integer parameters receive type confusion (8) plus max int64 overflow (1).
+
+### 2. Severity Weighting
+
+Each payload carries a severity assigned at generation time:
+
+| Severity | Weight | Description |
+|----------|--------|-------------|
+| CRITICAL | 4 | Direct code execution, cloud metadata exposure, local file read |
+| HIGH | 3 | SSRF to internal services, prompt injection, SQL injection |
+| MEDIUM | 2 | Resource exhaustion, type confusion |
+| LOW | 1 | Minor validation gaps, negative numbers |
+
+The leaderboard aggregates findings by count, not weighted score. A finding is counted once per payload-tool pair.
+
+### 3. Benchmarking
+
+Benchmarks are run against a live server instance:
+
+1. Spawn the server via stdio transport.
+2. Perform MCP handshake (`initialize` + `notifications/initialized`).
+3. Enumerate tools via `tools/list`.
+4. For each tool, generate schema-aware payloads and fire them sequentially.
+5. Classify each response as SAFE, FINDING, CRASH, or ERROR.
+6. Aggregate results and emit a report.
+
+All runs use the default `timeout` of 10 seconds per tool call. No retries or adaptive delays are applied in leaderboard runs.
+
+### 4. Response Classification
+
+| Class | Condition |
+|-------|-----------|
+| **SAFE** | Server returns `isError: true` — expected validation rejection |
+| **FINDING** | Server returns `isError: false` — payload accepted without error |
+| **FINDING** | Response text contains leaked internal info (traceback, exception, stack trace, password, secret, token) |
+| **CRASH** | `ConnectionError` raised — server process exited or closed connection |
+| **ERROR** | Unexpected exception during delivery |
+
+### 5. Reproducibility
+
+To reproduce leaderboard results:
 
 ```bash
-pip install -e ".[dev]"  # from repo
-mcp-guard fuzz -- npx @your-org/your-mcp-server
+# Clone and install
+git clone https://github.com/ShovalBenjer/mcp-guard.git
+cd mcp-guard
+pip install -e ".[dev]"
+
+# Run against a server
+mcp-guard fuzz -- npx @modelcontextprotocol/server-memory
+mcp-guard fuzz -- npx @modelcontextprotocol/server-filesystem /tmp
 ```
 
-Open a PR with your results added to this file.
+All output is deterministic given the same server version and input arguments.
+
+### 6. Submitting New Entries
+
+1. Run mcp-guard against your MCP server.
+2. Capture the full CLI output.
+3. Open a PR against this file with your results formatted as a new table row.
+4. Include: server name, tool count, total payloads sent, crashes, findings, safe count, and a brief verdict.
+
+New entries are reviewed for accuracy before merging.
