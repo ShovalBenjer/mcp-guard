@@ -2,13 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 
-
-class Severity(Enum):
-    CRITICAL = "critical"
-    WARNING = "warning"
-    INFO = "info"
+from .types import Severity
 
 
 @dataclass
@@ -35,7 +30,17 @@ _ENV_KEYWORDS = frozenset({
 
 
 class Scanner:
+    """Static security scanner for MCP tool schemas."""
+
     def scan_tool(self, tool: dict) -> list[ScanResult]:
+        """Scan a single MCP tool definition for security issues.
+
+        Args:
+            tool: The tool definition dictionary from the MCP server.
+
+        Returns:
+            A list of ScanResult entries for each issue found.
+        """
         findings: list[ScanResult] = []
         name = tool.get("name", "").lower()
         desc = tool.get("description", "").lower()
@@ -51,10 +56,19 @@ class Scanner:
     def _check_shell_injection(
         self, name: str, desc: str, properties: dict
     ) -> list[ScanResult]:
+        """Check for parameters that may accept shell commands.
+
+        Args:
+            name: Lowercase tool name.
+            desc: Lowercase tool description.
+            properties: Input schema properties dictionary.
+
+        Returns:
+            A list of ScanResult entries for shell injection risks.
+        """
         results: list[ScanResult] = []
         tool_ref = name or "unknown"
 
-        # Check name + description
         text = f"{name} {desc}"
         if any(kw in text for kw in _SHELL_KEYWORDS):
             results.append(ScanResult(
@@ -64,9 +78,7 @@ class Scanner:
                 tool_name=tool_ref,
                 remediation="Restrict to predefined commands. Never pass raw user input to shell.",
             ))
-            return results
 
-        # Check property names and descriptions
         for prop_name, prop_def in properties.items():
             prop_desc = prop_def.get("description", "").lower()
             prop_text = f"{prop_name} {prop_desc}"
@@ -78,13 +90,22 @@ class Scanner:
                     tool_name=tool_ref,
                     remediation="Use enum constraints or allowlists for command parameters.",
                 ))
-                break
 
         return results
 
     def _check_ssrf(
         self, name: str, desc: str, properties: dict
     ) -> list[ScanResult]:
+        """Check for parameters that accept URL input and may enable SSRF.
+
+        Args:
+            name: Lowercase tool name.
+            desc: Lowercase tool description.
+            properties: Input schema properties dictionary.
+
+        Returns:
+            A list of ScanResult entries for SSRF risks.
+        """
         results: list[ScanResult] = []
         tool_ref = name or "unknown"
 
@@ -107,11 +128,18 @@ class Scanner:
                     tool_name=tool_ref,
                     remediation="Validate URL scheme (https only). Block private IP ranges. Use an allowlist.",
                 ))
-                break
 
         return results
 
     def _check_missing_schema(self, schema: dict) -> list[ScanResult]:
+        """Check if the tool has a missing or empty input schema.
+
+        Args:
+            schema: The input schema dictionary from the tool definition.
+
+        Returns:
+            A list containing a single ScanResult if schema is missing.
+        """
         if not schema or "properties" not in schema:
             return [ScanResult(
                 rule_id="missing-schema",

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import dataclass
 from typing import TextIO
@@ -29,6 +30,11 @@ class FuzzReport:
         return [r for r in self.results if r.category == ResultCategory.SAFE]
 
     def to_table(self, out: TextIO | None = None) -> None:
+        """Render the fuzz report as a formatted table.
+
+        Args:
+            out: Optional output stream. Defaults to sys.stdout.
+        """
         out = out or sys.stdout
         out.write(f"\n{'='*72}\n")
         out.write(f"  mcp-guard fuzz report: {self.server_command}\n")
@@ -55,7 +61,7 @@ class FuzzReport:
                 out.write(f"         payload: {str(r.payload_value)[:60]}\n")
                 if r.response_preview:
                     out.write(f"         response: {r.response_preview[:60]}\n")
-                out.write("")
+                out.write("\n")
 
         remaining = len(self.findings) - 20
         if remaining > 0:
@@ -71,6 +77,11 @@ class FuzzReport:
         out.write(f"{'='*72}\n\n")
 
     def to_json(self, out: TextIO | None = None) -> None:
+        """Render the fuzz report as JSON.
+
+        Args:
+            out: Optional output stream. Defaults to sys.stdout.
+        """
         out = out or sys.stdout
         data = {
             "server": self.server_command,
@@ -99,6 +110,11 @@ class FuzzReport:
         out.write(json.dumps(data, indent=2, ensure_ascii=False))
 
     def to_sarif(self, out: TextIO | None = None) -> None:
+        """Render the fuzz report as SARIF 2.1.0 JSON.
+
+        Args:
+            out: Optional output stream. Defaults to sys.stdout.
+        """
         out = out or sys.stdout
         rules_map: dict[str, int] = {}
         rules_list: list[dict] = []
@@ -113,12 +129,13 @@ class FuzzReport:
                 rules_list.append({"id": r.rule_id, "shortDescription": {"text": r.rule_id}})
 
             sarif_level = "error" if r.category == ResultCategory.CRASH else "warning"
+            artifact_uri = f"file://{os.path.abspath(r.tool_name)}" if r.tool_name != "unknown" else f"mcp://{r.tool_name}"
             results_sarif.append({
                 "ruleId": r.rule_id,
                 "ruleIndex": rules_map[r.rule_id] - 1,
                 "level": sarif_level,
                 "message": {"text": r.detail},
-                "locations": [{"physicalLocation": {"artifactLocation": {"uri": f"mcp://{r.tool_name}"}}}],
+                "locations": [{"physicalLocation": {"artifactLocation": {"uri": artifact_uri}}}],
             })
 
         sarif = {
