@@ -76,7 +76,7 @@ def main() -> int:
             continue
         try:
             req = json.loads(line)
-        except Exception:
+        except ValueError:
             continue
         resp = handler(req)
         if resp is not None:

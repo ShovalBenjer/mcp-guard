@@ -87,7 +87,7 @@ def test_generate_all_for_param_unknown_type():
 def test_payloads_are_immutable():
     """Payload is a frozen dataclass; attributes must not be reassignable."""
     p = Payload("x", "r", __import__("mcp_guard.types", fromlist=["Severity"]).Severity.HIGH, "d")
-    with pytest.raises(Exception):
+    with pytest.raises(AttributeError):
         p.value = "mutated"
 
 

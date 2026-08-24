@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-import mcp_guard.cli as cli
-from mcp_guard.fuzzer import FuzzResult, ResultCategory
-from mcp_guard.scanner import ScanResult, Severity
+from mcp_guard import cli
 
 
 class FakeTransport:
