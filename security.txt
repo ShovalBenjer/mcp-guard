@@ -1,0 +1,3 @@
+Contact: mailto:security@example.com
+Expires: 2026-12-31
+Policy: https://github.com/ShovalBenjer/mcp-guard/blob/main/SECURITY.md
