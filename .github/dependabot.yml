@@ -1,0 +1,47 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci(deps)"
+    auto-merge:
+      match:
+        update-type: "version-update:semver-patch"
+      allowed-versions:
+        - ">={{ current_version }}"
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      pip:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci(deps)"
+    auto-merge:
+      match:
+        update-type: "version-update:semver-patch"
+      allowed-versions:
+        - ">={{ current_version }}"
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      npm:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci(deps)"
+    auto-merge:
+      match:
+        update-type: "version-update:semver-patch"
+      allowed-versions:
+        - ">={{ current_version }}"
