@@ -15,14 +15,6 @@ updates:
       prefix: "ci(deps)"
       include: "scope"
     open-pull-requests-limit: 5
-    pr-branch-suffix: "ci-deps"
-    auto-merge:
-      - match:
-          dependency-type: "development"
-          update-type: "version-update:semver-patch"
-        commit-message:
-          prefix: "ci(deps)"
-          include: "scope"
 
   - package-ecosystem: "pip"
     directory: "/"
@@ -39,12 +31,4 @@ updates:
       prefix: "ci(deps)"
       include: "scope"
     open-pull-requests-limit: 5
-    pr-branch-suffix: "pip-deps"
-    auto-merge:
-      - match:
-          dependency-type: "development"
-          update-type: "version-update:semver-patch"
-        commit-message:
-          prefix: "ci(deps)"
-          include: "scope"
 
