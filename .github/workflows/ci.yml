@@ -1,23 +1,111 @@
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 0 * * 0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install uv
         uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
       - name: Install dependencies
         run: uv pip install -e ".[dev]" --system
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
-      - name: Lint
-        run: ruff check
-      - name: Type check
-        run: mypy src/mcp_guard
+      - name: Run tests with coverage
+        run: pytest tests/ --cov=mcp_guard --cov-report=xml --cov-report=term
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: ${{ matrix.os }}-py${{ matrix.python-version }}
+          name: ${{ matrix.os }}-py${{ matrix.python-version }}
+          fail_ci_if_error: false
+
+  lint:
+    name: Lint & Format (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/setup
+        with:
+          python-version: "3.12"
+      - name: Ruff lint check
+        run: ruff check src/ tests/
+      - name: Ruff format check
+        run: ruff format --check src/ tests/
+
+  typecheck:
+    name: Type Check (mypy strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/setup
+        with:
+          python-version: "3.12"
+      - name: Run mypy strict
+        run: mypy --strict src/mcp_guard
+
+  security:
+    name: Security Scan (bandit + pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/setup
+        with:
+          python-version: "3.12"
+      - name: Bandit security scan
+        run: bandit -r src/mcp_guard -c pyproject.toml -ll
+      - name: pip-audit dependency audit
+        run: pip-audit
+
+  sbom:
+    name: SBOM Generation (CycloneDX)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/setup
+        with:
+          python-version: "3.12"
+      - name: Generate CycloneDX SBOM
+        run: |
+          cyclonedx-py environment --output-file sbom.json --format json
+          cyclonedx-py environment --output-file sbom.xml --format xml
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: |
+            sbom.json
+            sbom.xml
+          retention-days: 30
+
+  fuzz:
+    name: Fuzz Test Gate (failure modes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/setup
+        with:
+          python-version: "3.12"
+      - name: Run fuzz test suite
+        run: pytest tests/test_fuzzer.py -v --tb=short
