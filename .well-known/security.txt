@@ -1,0 +1,5 @@
+Contact: mailto:security@shovalbenjer.com
+Expires: 2027-12-31T23:59:59+00:00
+Canonical: https://github.com/ShovalBenjer/mcp-guard/blob/main/.well-known/security.txt
+Preferred-Languages: en
+Hiring: https://github.com/ShovalBenjer/mcp-guard

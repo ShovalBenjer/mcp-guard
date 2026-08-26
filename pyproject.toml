@@ -1,12 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "mcp-guard"
 version = "0.1.0"
 description = "MCP Server Security Scanner — audit MCP endpoints against OWASP Agentic Top 10"
+readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.11"
+authors = [{name = "Shoval Benjer"}]
+keywords = ["mcp", "security", "scanner", "fuzzing", "owasp", "agentic-security"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Security :: Vulnerability Reconnaissance",
+    "Typing :: Typed",
+]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.5", "mypy>=1.10"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "bandit[toml]>=1.7.5",
+    "pip-audit>=24.0",
+    "cyclonedx-bom>=8.0",
+    "build>=1.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/ShovalBenjer/mcp-guard"
+Repository = "https://github.com/ShovalBenjer/mcp-guard"
+Issues = "https://github.com/ShovalBenjer/mcp-guard/issues"
+Changelog = "https://github.com/ShovalBenjer/mcp-guard/blob/main/CHANGELOG.md"
 
 [project.scripts]
 mcp-guard = "mcp_guard.cli:main"
@@ -15,9 +52,41 @@ mcp-guard = "mcp_guard.cli:main"
 target-version = "py311"
 line-length = 100
 
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W", "Q"]
+ignore = ["B008"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=mcp_guard --cov-report=term-missing"
+addopts = "-v --tb=short --cov=mcp_guard --cov-report=term-missing --cov-report=xml"
 
 [tool.mypy]
+strict = true
+strict_equality = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+ignore_missing_imports = true
 mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.coverage.run]
+source = ["mcp_guard"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "docs", ".venv", "build", "dist"]
+skips = ["B603", "B404"]
