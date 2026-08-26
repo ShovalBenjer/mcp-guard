@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import queue
 import subprocess
+import threading
 from typing import Any
 
 
@@ -88,25 +90,44 @@ class StdioTransport:
         proc = self._proc
         assert proc is not None
         assert proc.stdout is not None
-        while True:
-            response_line = proc.stdout.readline()
-            if not response_line:
-                raise ConnectionError("Server closed connection")
+
+        q: queue.Queue[str | None] = queue.Queue()
+
+        def _read_line() -> None:
             try:
-                response = json.loads(response_line)
-            except json.JSONDecodeError:
-                continue
-            if "method" in response and "id" not in response:
-                continue
-            if "error" in response:
-                raise RuntimeError(f"MCP error: {response['error']}")
-            return response.get("result", {})
+                q.put(proc.stdout.readline())
+            except Exception:
+                q.put(None)
+
+        thread = threading.Thread(target=_read_line, daemon=True)
+        thread.start()
+        thread.join(timeout=self._timeout)
+
+        if thread.is_alive():
+            if self._proc and self._proc.poll() is None:
+                self._proc.kill()
+            raise TimeoutError(
+                f"No response from server within {self._timeout}s timeout"
+            )
+
+        response_line = q.get()
+        if not response_line:
+            raise ConnectionError("Server closed connection")
+        try:
+            response = json.loads(response_line)
+        except json.JSONDecodeError:
+            raise ConnectionError("Invalid JSON response from server")
+        if "method" in response and "id" not in response:
+            raise ConnectionError("Invalid JSON response from server")
+        if "error" in response:
+            raise RuntimeError(f"MCP error: {response['error']}")
+        return response.get("result", {})
 
     def _initialize(self) -> dict:
         result = self._send("initialize", {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "mcp-guard", "version": "0.1.0"},
+            "clientInfo": {"name": "mcp-guard", "version": "0.2.1"},
         })
         self._notify("notifications/initialized")
         return result
