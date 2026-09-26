@@ -66,8 +66,8 @@ def main():
     model_token = os.environ.get("JEV_MODEL_TOKEN", "") or gh_token
     model = os.environ.get("JEV_MODEL", "gpt-4o-mini")
 
-    user_ctx = "Topic: %s\nContext: %s" % (topic, topic_body[:2000])
-    transcript = ["# Coffee break: %s" % topic, ""]
+    user_ctx = f"Topic: {topic}\nContext: {topic_body[:2000]}"
+    transcript = [f"# Coffee break: {topic}", ""]
     if not model_token:
         transcript.append("_No model token configured. Set `JEV_MODEL_TOKEN` secret to enable deliberation._")
     else:
@@ -75,20 +75,20 @@ def main():
             proposal = chat(model, PERSONA_PROMPTS["builder"], user_ctx, model_token)
             critique = chat(model, PERSONA_PROMPTS["critic"], "Proposal:\n" + proposal, model_token)
             ruling = chat(model, PERSONA_PROMPTS["guardian"],
-                          "Proposal:\n%s\nCritique:\n%s" % (proposal, critique), model_token)
+                          f"Proposal:\n{proposal}\nCritique:\n{critique}", model_token)
             dream = chat(model, PERSONA_PROMPTS["dreamer"], user_ctx, model_token)
             transcript += ["## Builder", proposal, "## Jealous Critic", critique,
                            "## Guardian", ruling, "## Dreamer", dream,
                            "## Dissent log", "Kept verbatim above. A killed idea today is a seed tomorrow."]
         except Exception as e:  # noqa: BLE001 - scaffold must never fail CI
-            transcript.append("_Deliberation failed (%s). Transcript stub only._" % type(e).__name__)
+            transcript.append(f"_Deliberation failed ({type(e).__name__}). Transcript stub only._")
     body = "\n\n".join(transcript)
     if gh_token:
         try:
-            post_discussion(repo, gh_token, "Coffee break: %s" % topic, body)
+            post_discussion(repo, gh_token, f"Coffee break: {topic}", body)
             return
         except Exception as e:  # noqa: BLE001
-            print("discussion post failed: %s" % e)
+            print(f"discussion post failed: {e}")
     print(body)
 
 
