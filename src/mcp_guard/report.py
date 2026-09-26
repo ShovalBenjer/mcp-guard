@@ -125,7 +125,7 @@ class FuzzReport:
             "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
             "version": "2.1.0",
             "runs": [{
-                "tool": {"driver": {"name": "mcp-guard", "version": "0.1.0", "rules": rules_list}},
+                "tool": {"driver": {"name": "mcp-guard", "version": "0.2.1", "rules": rules_list}},
                 "results": results_sarif,
             }],
         }
