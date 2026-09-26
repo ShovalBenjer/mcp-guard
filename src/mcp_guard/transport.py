@@ -90,13 +90,14 @@ class StdioTransport:
         proc = self._proc
         assert proc is not None
         assert proc.stdout is not None
+        stdout = proc.stdout  # capture: mypy-narrowed, safe inside the closure
 
         q: queue.Queue[str | None] = queue.Queue()
 
         def _read_line() -> None:
             try:
-                q.put(proc.stdout.readline())
-            except Exception:
+                q.put(stdout.readline())
+            except (OSError, ValueError):  # stream closed/torn down mid-read
                 q.put(None)
 
         thread = threading.Thread(target=_read_line, daemon=True)
