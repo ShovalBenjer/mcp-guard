@@ -6,7 +6,6 @@ If no model is reachable, posts a stub noting what to wire up. Never fails CI.
 """
 import json
 import os
-import sys
 import urllib.request
 
 GH_API = "https://api.github.com"
