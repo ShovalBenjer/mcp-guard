@@ -1,11 +1,16 @@
 """Fuzz engine — orchestrates adversarial payload delivery to MCP tools."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
-from .payloads import Payload, generate_all_for_param
+from .payloads import INDIRECT_CANARY, Payload, generate_all_for_param
+
+# Markdown image pointing at an external URL inside a tool *output*: the
+# exfiltration channel of the EchoLeak (CVE-2025-32711) pattern.
+_EXFIL_MD_RE = re.compile(r"!\[[^\]]*\]\(\s*https?://", re.IGNORECASE)
 
 
 class ResultCategory(Enum):
@@ -126,6 +131,41 @@ class FuzzEngine:
             )
 
         text_lower = text.lower()
+
+        # Indirect prompt injection (OWASP ASI01): the server reflected our
+        # canary-bearing probe into its tool *output*. A downstream agent
+        # reading that output receives attacker-shaped "instructions" on the
+        # data channel — the seed of goal hijack. Checked only for
+        # indirect-injection probes so normal input echo is not flagged.
+        if payload.rule_id == "indirect-injection" and INDIRECT_CANARY in text:
+            return FuzzResult(
+                tool_name=tool_name,
+                probe_name=param_name,
+                payload_value=payload.value,
+                category=ResultCategory.FINDING,
+                rule_id="reflection-untrusted-echo",
+                severity="high",
+                detail=(
+                    "Server reflected attacker-controlled input into tool output — "
+                    "seed for indirect prompt injection (OWASP ASI01)"
+                ),
+                response_preview=text[:200],
+            )
+
+        # Exfil-shaped channel in tool output (EchoLeak pattern): a markdown
+        # image to an external URL gives injected content a way to phone home.
+        if payload.rule_id == "indirect-injection" and _EXFIL_MD_RE.search(text):
+            return FuzzResult(
+                tool_name=tool_name,
+                probe_name=param_name,
+                payload_value=payload.value,
+                category=ResultCategory.FINDING,
+                rule_id="indirect-injection-exfil-channel",
+                severity="critical",
+                detail="Tool output contains markdown image to external URL — exfil channel",
+                response_preview=text[:200],
+            )
+
         leaked = any(
             kw in text_lower
             for kw in ("traceback", "exception", "stack trace", "error:", "internal", "password", "secret", "token")
