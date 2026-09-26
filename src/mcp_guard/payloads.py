@@ -4,6 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+# Bump when a generator is added, removed, or materially changed. Surfaced in
+# report provenance so consumers can tell which payload set produced a report.
+PAYLOAD_SET_VERSION = "1"
+
 
 class Severity(Enum):
     CRITICAL = "critical"
