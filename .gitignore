@@ -100,3 +100,7 @@ site/
 *.p12
 *.pfx
 *.p8
+
+# jev routing decisions: local telemetry, append-only ledger (ADR-0009).
+# Gitignored per repo standard: ledgers holding local telemetry are not committed.
+jev/decisions.jsonl
