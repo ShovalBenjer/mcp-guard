@@ -10,6 +10,8 @@ from .report import FuzzReport
 from .scanner import Scanner
 from .transport import StdioTransport
 
+logger = logging.getLogger(__name__)
+
 
 def _setup_logging(verbose: bool, quiet: bool) -> None:
     if quiet:
@@ -62,25 +64,25 @@ def main(argv: list[str] | None = None) -> None:
 def _run_fuzz(args: argparse.Namespace) -> None:
     cmd = [a for a in args.server_command if a != "--"]
     if not cmd:
-        logging.error("Error: specify MCP server command after --")
-        logging.info("Usage: mcp-guard fuzz -- npx @modelcontextprotocol/server-memory")
+        logger.error("Error: specify MCP server command after --")
+        logger.info("Usage: mcp-guard fuzz -- npx @modelcontextprotocol/server-memory")
         sys.exit(1)
 
-    logging.info("Starting MCP server: %s", " ".join(cmd))
+    logger.info("Starting MCP server: %s", " ".join(cmd))
     try:
         with StdioTransport(cmd, timeout=args.timeout) as transport:
-            logging.info("Connected. Enumerating tools...")
+            logger.info("Connected. Enumerating tools...")
             tools = transport.list_tools()
             if not tools:
-                logging.warning("No tools found on this server.")
+                logger.warning("No tools found on this server.")
                 return
 
-            logging.info("Found %d tools. Generating payloads...", len(tools))
+            logger.info("Found %d tools. Generating payloads...", len(tools))
             all_results = []
             engine = FuzzEngine(transport=transport, delay_ms=args.delay_ms)
             for tool in tools:
                 name = tool.get("name", "unknown")
-                logging.info("Fuzzing: %s...", name)
+                logger.info("Fuzzing: %s...", name)
                 results = engine.fuzz_tool(tool)
                 all_results.extend(results)
 
@@ -100,45 +102,45 @@ def _run_fuzz(args: argparse.Namespace) -> None:
 
             crashes = len(report.crashes)
             if crashes:
-                logging.warning("VERDICT: VULNERABLE — %d crashes detected", crashes)
+                logger.warning("VERDICT: VULNERABLE — %d crashes detected", crashes)
                 sys.exit(2)
             elif report.findings:
-                logging.warning("VERDICT: %d findings require investigation", len(report.findings))
+                logger.warning("VERDICT: %d findings require investigation", len(report.findings))
             else:
-                logging.info("VERDICT: CLEAN — all payloads handled safely")
+                logger.info("VERDICT: CLEAN — all payloads handled safely")
     except ConnectionError as e:
-        logging.error("Connection error: %s", e)
+        logger.error("Connection error: %s", e)
         sys.exit(1)
     except Exception as e:  # noqa: BLE001
-        logging.error("Error: %s", e)
+        logger.error("Error: %s", e)
         sys.exit(1)
 
 
 def _run_scan(args: argparse.Namespace) -> None:
     cmd = [a for a in args.server_command if a != "--"]
     if not cmd:
-        logging.error("Error: specify MCP server command after --")
+        logger.error("Error: specify MCP server command after --")
         sys.exit(1)
 
     try:
         with StdioTransport(cmd) as transport:
             tools = transport.list_tools()
             if not tools:
-                logging.warning("No tools found.")
+                logger.warning("No tools found.")
                 return
 
             scanner = Scanner()
-            logging.info("Static scan of %d tools:", len(tools))
+            logger.info("Static scan of %d tools:", len(tools))
             for tool in tools:
                 name = tool.get("name", "unknown")
                 results = scanner.scan_tool(tool)
                 if results:
                     for r in results:
-                        logging.info("  [%s] %s: %s", r.severity.value.upper(), name, r.message)
+                        logger.info("  [%s] %s: %s", r.severity.value.upper(), name, r.message)
                 else:
-                    logging.info("  [PASS] %s", name)
+                    logger.info("  [PASS] %s", name)
     except Exception as e:  # noqa: BLE001
-        logging.error("Error: %s", e)
+        logger.error("Error: %s", e)
         sys.exit(1)
 
 
