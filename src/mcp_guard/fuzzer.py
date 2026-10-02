@@ -17,16 +17,18 @@ def _payload_reflected(payload_value: object, text: str) -> bool:
     """Did attacker-controlled bytes reach the tool output?
 
     Checks the payload verbatim and quote-stripped (servers often echo
-    inside their own quoting). The stripped form needs >= 6 chars to avoid
-    matching common substrings.
+    inside their own quoting). Payloads shorter than 6 chars are never
+    flagged: for a 1-char payload coincidence is indistinguishable from
+    reflection (e.g. payload "0" matching "count: 10"), so not flagging is
+    the evidence-graded behavior.
     """
     s = str(payload_value)
-    if not s:
+    if len(s) < 6:
         return False
     if s in text:
         return True
     stripped = s.strip("'\"")
-    return len(stripped) >= 6 and stripped in text
+    return stripped in text
 
 
 class ResultCategory(Enum):
