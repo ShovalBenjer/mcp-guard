@@ -6,11 +6,29 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
 
-from .payloads import INDIRECT_CANARY, Payload, generate_all_for_param
+from .payloads import INDIRECT_CANARY, Payload, Severity, generate_all_for_param
 
 # Markdown image pointing at an external URL inside a tool *output*: the
 # exfiltration channel of the EchoLeak (CVE-2025-32711) pattern.
 _EXFIL_MD_RE = re.compile(r"!\[[^\]]*\]\(\s*https?://", re.IGNORECASE)
+
+
+def _payload_reflected(payload_value: object, text: str) -> bool:
+    """Did attacker-controlled bytes reach the tool output?
+
+    Checks the payload verbatim and quote-stripped (servers often echo
+    inside their own quoting). Payloads shorter than 6 chars are never
+    flagged: for a 1-char payload coincidence is indistinguishable from
+    reflection (e.g. payload "0" matching "count: 10"), so not flagging is
+    the evidence-graded behavior.
+    """
+    s = str(payload_value)
+    if len(s) < 6:
+        return False
+    if s in text:
+        return True
+    stripped = s.strip("'\"")
+    return stripped in text
 
 
 class ResultCategory(Enum):
@@ -182,13 +200,53 @@ class FuzzEngine:
                 response_preview=text[:200],
             )
 
+        # Evidence-graded default (mcp-guard#107): severity follows what we
+        # OBSERVED, not the payload's potential. Cross-repo evidence
+        # (mcp-guard vs agentgate demo server, 2026-10-02): a pure dict lookup
+        # that echoes input in a "not found" message drew 20 CRITICAL
+        # shell-injection findings — there is no shell. A fuzzer that cries
+        # critical on zero evidence drowns real findings in noise.
+        if _payload_reflected(payload.value, text):
+            if payload.rule_id in ("prompt-injection", "indirect-injection"):
+                # The reflection IS the attack: a downstream agent reads
+                # these instructions on the data channel.
+                severity = payload.severity.value
+            else:
+                # Execution-class payload (shell/sqli/...): reflection is
+                # not execution. Unconfirmed — medium, never critical.
+                severity = Severity.MEDIUM.value
+            return FuzzResult(
+                tool_name=tool_name,
+                probe_name=param_name,
+                payload_value=payload.value,
+                category=ResultCategory.FINDING,
+                rule_id=f"{payload.rule_id}-unconfirmed-reflection",
+                severity=severity,
+                detail=(
+                    "Payload reflected in tool output without execution "
+                    "evidence. For prompt-injection payloads the reflection "
+                    "itself reaches a downstream agent; for execution-class "
+                    "payloads this is unconfirmed."
+                ),
+                response_preview=text[:200],
+            )
+        # Deliberately FINDING (not SAFE) at INFO: for a pre-deployment
+        # security fuzzer the safe direction of error is non-negotiable. A
+        # silently-executed payload is observationally identical to a
+        # neutralized one; resolving that ambiguity as SAFE would let the
+        # CLI's CLEAN verdict assert safety it cannot verify. INFO keeps it
+        # visible and filterable without crying wolf.
         return FuzzResult(
             tool_name=tool_name,
             probe_name=param_name,
             payload_value=payload.value,
             category=ResultCategory.FINDING,
-            rule_id=payload.rule_id,
-            severity=payload.severity.value,
-            detail="Payload accepted without error — potential vulnerability",
+            rule_id=f"{payload.rule_id}-no-observable-effect",
+            severity=Severity.INFO.value,
+            detail=(
+                "Payload produced no observable effect: not reflected, no "
+                "error, no leak. Silent execution cannot be ruled out by "
+                "black-box probing alone — informational, not a clean bill."
+            ),
             response_preview=text[:200],
         )
