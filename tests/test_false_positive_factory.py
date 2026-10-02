@@ -81,6 +81,9 @@ def test_neutralized_payload_is_info_finding_not_silent_safe():
 
 def test_reflection_helper_edge_cases():
     assert _payload_reflected("'; rm -rf /'", "sku '; rm -rf /': not found")
-    assert _payload_reflected("abc", "xxabcxx")
+    assert _payload_reflected("longtoken123", "xxlongtoken123xx")
     assert not _payload_reflected("'; rm -rf /'", "ok")
     assert not _payload_reflected("", "anything")
+    # short payloads: coincidence is indistinguishable from reflection
+    assert not _payload_reflected("abc", "xxabcxx")
+    assert not _payload_reflected("0", "count: 10")
