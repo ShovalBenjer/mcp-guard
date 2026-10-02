@@ -228,17 +228,23 @@ class FuzzEngine:
                 ),
                 response_preview=text[:200],
             )
+        # Deliberately FINDING (not SAFE) at INFO: for a pre-deployment
+        # security fuzzer the safe direction of error is non-negotiable. A
+        # silently-executed payload is observationally identical to a
+        # neutralized one; resolving that ambiguity as SAFE would let the
+        # CLI's CLEAN verdict assert safety it cannot verify. INFO keeps it
+        # visible and filterable without crying wolf.
         return FuzzResult(
             tool_name=tool_name,
             probe_name=param_name,
             payload_value=payload.value,
-            category=ResultCategory.SAFE,
+            category=ResultCategory.FINDING,
             rule_id=f"{payload.rule_id}-no-observable-effect",
             severity=Severity.INFO.value,
             detail=(
                 "Payload produced no observable effect: not reflected, no "
                 "error, no leak. Silent execution cannot be ruled out by "
-                "black-box probing alone."
+                "black-box probing alone — informational, not a clean bill."
             ),
             response_preview=text[:200],
         )
