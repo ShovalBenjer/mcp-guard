@@ -63,14 +63,20 @@ def test_reflection_is_still_recorded_not_hidden():
     assert all(r.severity == "medium" for r in shell_reflected)
 
 
-def test_neutralized_payload_is_safe_not_finding():
-    """No reflection, no error, no leak: no evidence of vulnerability."""
+def test_neutralized_payload_is_info_finding_not_silent_safe():
+    """No reflection, no error, no leak: the safe direction of error for a
+    security fuzzer is to keep it VISIBLE. Silent execution is
+    observationally identical to neutralization — resolving that as SAFE
+    would let a CLEAN verdict overclaim. INFO: filterable, not wolf-crying."""
     engine = FuzzEngine(transport=NeutralTransport())
     results = engine.fuzz_tool(_LOOKUP_TOOL)
     assert len(results) > 0
-    findings = [r for r in results if r.category == ResultCategory.FINDING]
-    assert not findings, f"expected zero findings, got {len(findings)}"
-    assert all(r.category == ResultCategory.SAFE for r in results)
+    for r in results:
+        assert r.category == ResultCategory.FINDING
+        assert r.severity == "info"
+        assert "no-observable-effect" in r.rule_id
+    above_info = [r for r in results if r.severity not in ("info",)]
+    assert not above_info, "neutralized payloads must never exceed INFO"
 
 
 def test_reflection_helper_edge_cases():
