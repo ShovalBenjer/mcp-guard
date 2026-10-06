@@ -377,6 +377,27 @@ class TestPayloadDocSync:
 
     # ---- docs/spec.md ----
 
+    def test_spec_probe_summary_table_family_count(self, spec: str) -> None:
+        """The '### Fuzz Probes (v1)' summary table must list every family.
+
+        #13's implementation review caught this table still enumerating 5
+        probes after the taxonomy gained its 6th — this test pins it."""
+        section = _section(spec, "### Fuzz Probes (v1)", "### Payload Intelligence")
+        data_rows = [
+            line for line in section.splitlines()
+            if line.strip().startswith("| **")
+        ]
+        n_families = len({generate_shell_injection()[0].rule_id,
+                          generate_ssrf()[0].rule_id,
+                          generate_overflow()[0].rule_id,
+                          generate_type_confusion("string")[0].rule_id,
+                          generate_prompt_injection()[0].rule_id,
+                          generate_indirect_injection()[0].rule_id})
+        assert len(data_rows) == n_families, (
+            f"spec probe summary table has {len(data_rows)} rows, generators "
+            f"define {n_families} families"
+        )
+
     def test_spec_taxonomy_covers_all_families(self, spec: str) -> None:
         sections = _taxonomy_sections(spec)
         expected = {

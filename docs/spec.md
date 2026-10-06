@@ -24,6 +24,7 @@ CLI + library that **dynamically fuzzes** MCP (Model Context Protocol) servers b
 | **overflow** | 10KB–1MB strings, deeply nested JSON, 10K-key objects | Buffer overflows, memory leaks |
 | **type_confusion** | String where int expected, arrays for scalars, null for required | Missing validation |
 | **prompt_injection** | "Ignore previous instructions...", system prompt extractions | Prompt leakage, instruction override |
+| **indirect_injection** | `mcpguard-indirect-canary` exfil ping, reflected system tag | Goal hijack via reflected tool output |
 
 ### Payload Intelligence
 
