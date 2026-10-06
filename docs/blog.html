@@ -96,10 +96,10 @@ footer{text-align:center;padding:40px;color:#444;font-size:0.85em}
   <li>Performs the MCP handshake, enumerates all tools</li>
   <li>Reads each tool's <code>inputSchema</code></li>
   <li>Generates <strong>schema-aware adversarial payloads</strong> per parameter type</li>
-  <li>Fires 35 payloads per string parameter and classifies every response</li>
+  <li>Fires 29 payloads per string parameter and classifies every response</li>
 </ol>
 
-<h3>5 probe types</h3>
+<h3>6 probe types</h3>
 <div class="table-wrap">
 <table class="glass">
   <tr><th>Probe</th><th>Example Payload</th><th>What It Catches</th></tr>
@@ -108,10 +108,11 @@ footer{text-align:center;padding:40px;color:#444;font-size:0.85em}
   <tr><td><span class="badge badge-blue">Overflow</span></td><td>100KB string</td><td>Buffer overflows, OOM</td></tr>
   <tr><td><span class="badge badge-blue">Type confusion</span></td><td>Array for string param</td><td>Missing validation</td></tr>
   <tr><td><span class="badge badge-red">Prompt injection</span></td><td>"Ignore previous instructions"</td><td>Instruction override</td></tr>
+  <tr><td><span class="badge badge-red">Indirect injection</span></td><td><code>mcpguard-indirect-canary</code> exfil ping</td><td>Goal hijack via reflected output</td></tr>
 </table>
 </div>
 
-<p>The key differentiation: payloads are <strong>intelligent</strong>. If a tool has a URI parameter, it gets SSRF payloads. If it has a string parameter, it gets shell injection + overflow + prompt injection. No-schema tools get the full suite of 35 payloads.</p>
+<p>The key differentiation: payloads are <strong>intelligent</strong>. If a tool has a URI parameter, it gets SSRF payloads. If it has a string parameter, it gets shell injection + overflow + prompt injection + indirect injection. No-schema tools get the full suite of 24 payloads.</p>
 </div>
 
 <div class="section" id="results">

@@ -35,10 +35,10 @@
 1. Spawns your MCP server via stdio transport
 2. Enumerates all exposed tools
 3. Reads each tool's `inputSchema` and generates **schema-aware adversarial payloads**
-4. Fires up to **25 payloads per string parameter** (33 for URI-typed parameters) and classifies every response
+4. Fires up to **29 payloads per string parameter** (37 for URI-typed parameters) and classifies every response
 5. Reports: `SAFE` / `FINDING` / `CRASH`
 
-### 5 Probe Types
+### 6 Probe Types
 
 | Probe | Example Payloads | Catches |
 |:------|:-----------------|:--------|
@@ -47,6 +47,7 @@
 | **Overflow** | 10KB → 1MB strings, 10K-key objects | Buffer overflows, OOM |
 | **Type confusion** | Wrong types, null for required, arrays for scalars | Missing input validation |
 | **Prompt injection** | DAN override, system prompt extraction, XML injection | Instruction override, prompt leak |
+| **Indirect injection** | `mcpguard-indirect-canary` exfil ping, reflected system tag | Goal hijack via reflected tool output |
 
 Payloads are schema-aware: URI params get SSRF probes, string params get injection plus overflow, no-schema tools get the full suite.
 
@@ -166,7 +167,7 @@ Zero external dependencies. Python 3.11+ stdlib only.
 |---------|----------|--------|
 | Stdio transport (subprocess spawn) | Production | Implemented |
 | Schema-aware payload generation | Production | Implemented |
-| 5 probe types (shell, SSRF, overflow, type confusion, prompt injection) | Production | Implemented |
+| 6 probe types (shell, SSRF, overflow, type confusion, prompt injection, indirect injection) | Production | Implemented |
 | Response classification (SAFE / FINDING / CRASH) | Production | Implemented |
 | CLI (`fuzz`, `scan` subcommands) | Production | Implemented |
 | Output formats (table, JSON, SARIF) | Production | Implemented |
@@ -205,8 +206,8 @@ Payload counts follow a schema-aware model. See [LEADERBOARD.md](LEADERBOARD.md#
 
 | Tool Input | Payloads per Parameter |
 |------------|------------------------|
-| String parameter | 25 |
-| URI-typed string parameter | 33 |
+| String parameter | 29 |
+| URI-typed string parameter | 37 |
 | Integer / number parameter | 9 |
 | No input schema | 24 |
 
