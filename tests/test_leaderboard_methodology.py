@@ -12,12 +12,15 @@ literals.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from mcp_guard.fuzzer import FuzzEngine
+
 from mcp_guard.payloads import (
+    Payload,
     Severity,
     generate_all_for_param,
     generate_indirect_injection,
@@ -221,16 +224,24 @@ README = REPO_ROOT / "README.md"
 SPEC = REPO_ROOT / "docs" / "spec.md"
 BLOG = REPO_ROOT / "docs" / "blog.html"
 
-# rule_id -> generator, derived from the generators themselves (no literals)
-PROBE_FAMILIES = {
-    "shell-injection": generate_shell_injection,
-    "ssrf": generate_ssrf,
-    "overflow": generate_overflow,
-    "type-confusion-string": lambda: generate_type_confusion("string"),
-    "type-confusion-integer": lambda: generate_type_confusion("integer"),
-    "prompt-injection": generate_prompt_injection,
-    "indirect-injection": generate_indirect_injection,
+# Canonical inventory of payload-family generators, keyed by module function
+# name. Every family-count/coverage test below derives from this registry, and
+# test_family_registry_complete enforces it stays in sync with
+# mcp_guard.payloads — so a new generate_* family breaks CI with a naming
+# message instead of silently going undocumented.
+FAMILY_GENERATORS: dict[str, "Callable[[], list[Payload]]"] = {
+    "generate_shell_injection": generate_shell_injection,
+    "generate_ssrf": generate_ssrf,
+    "generate_overflow": generate_overflow,
+    "generate_type_confusion": lambda: generate_type_confusion("string"),
+    "generate_prompt_injection": generate_prompt_injection,
+    "generate_indirect_injection": generate_indirect_injection,
 }
+
+
+def _family_rule_ids() -> set[str]:
+    """rule_ids of every registered family — derived, never literal."""
+    return {FAMILY_GENERATORS[name]()[0].rule_id for name in FAMILY_GENERATORS}
 
 
 def _taxonomy_sections(spec_text: str) -> dict[str, str]:
@@ -360,12 +371,7 @@ class TestPayloadDocSync:
         ]
         # six generator families: shell, ssrf, overflow, type-confusion,
         # prompt-injection, indirect-injection — derived, not literal:
-        n_families = len({generate_shell_injection()[0].rule_id,
-                          generate_ssrf()[0].rule_id,
-                          generate_overflow()[0].rule_id,
-                          generate_type_confusion("string")[0].rule_id,
-                          generate_prompt_injection()[0].rule_id,
-                          generate_indirect_injection()[0].rule_id})
+        n_families = len(_family_rule_ids())
         assert int(m.group(1)) == n_families, (
             f"README heading says {m.group(1)} probe types, generators define "
             f"{n_families} families"
@@ -377,6 +383,31 @@ class TestPayloadDocSync:
 
     # ---- docs/spec.md ----
 
+    def test_family_registry_complete(self) -> None:
+        """Every generate_* in mcp_guard.payloads is in FAMILY_GENERATORS.
+
+        This is the choke point: a new payload family added to the module
+        without registry + docs breaks here, naming the unregistered
+        generator. generate_all_for_param is the dispatcher, not a family.
+        """
+        import mcp_guard.payloads as payloads_mod
+
+        module_gens = {
+            name
+            for name, obj in vars(payloads_mod).items()
+            if name.startswith("generate_") and callable(obj)
+        } - {"generate_all_for_param"}
+        unregistered = module_gens - set(FAMILY_GENERATORS)
+        assert not unregistered, (
+            f"payloads.py defines unregistered generator(s) "
+            f"{sorted(unregistered)} — add to FAMILY_GENERATORS and document "
+            f"the family, or the doc-sync tests go stale"
+        )
+        stale = set(FAMILY_GENERATORS) - module_gens
+        assert not stale, (
+            f"FAMILY_GENERATORS names removed generator(s) {sorted(stale)}"
+        )
+
     def test_spec_probe_summary_table_family_count(self, spec: str) -> None:
         """The '### Fuzz Probes (v1)' summary table must list every family.
 
@@ -387,12 +418,7 @@ class TestPayloadDocSync:
             line for line in section.splitlines()
             if line.strip().startswith("| **")
         ]
-        n_families = len({generate_shell_injection()[0].rule_id,
-                          generate_ssrf()[0].rule_id,
-                          generate_overflow()[0].rule_id,
-                          generate_type_confusion("string")[0].rule_id,
-                          generate_prompt_injection()[0].rule_id,
-                          generate_indirect_injection()[0].rule_id})
+        n_families = len(_family_rule_ids())
         assert len(data_rows) == n_families, (
             f"spec probe summary table has {len(data_rows)} rows, generators "
             f"define {n_families} families"
@@ -400,14 +426,7 @@ class TestPayloadDocSync:
 
     def test_spec_taxonomy_covers_all_families(self, spec: str) -> None:
         sections = _taxonomy_sections(spec)
-        expected = {
-            generate_shell_injection()[0].rule_id,
-            generate_ssrf()[0].rule_id,
-            generate_overflow()[0].rule_id,
-            generate_type_confusion("string")[0].rule_id,
-            generate_prompt_injection()[0].rule_id,
-            generate_indirect_injection()[0].rule_id,
-        }
+        expected = _family_rule_ids()
         missing = expected - set(sections)
         assert not missing, (
             f"spec taxonomy has no section for rule_id(s) {sorted(missing)} — "
@@ -513,12 +532,7 @@ class TestPayloadDocSync:
         table = blog[m.end():]
         table = table[: table.index("</table>")]
         data_rows = re.findall(r"<tr><td><span class=\"badge", table)
-        n_families = len({generate_shell_injection()[0].rule_id,
-                          generate_ssrf()[0].rule_id,
-                          generate_overflow()[0].rule_id,
-                          generate_type_confusion("string")[0].rule_id,
-                          generate_prompt_injection()[0].rule_id,
-                          generate_indirect_injection()[0].rule_id})
+        n_families = len(_family_rule_ids())
         assert int(m.group(1)) == n_families
         assert len(data_rows) == n_families, (
             f"blog probe table has {len(data_rows)} rows, generators define "
