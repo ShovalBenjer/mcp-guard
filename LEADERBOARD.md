@@ -6,7 +6,7 @@ Results from running [mcp-guard](https://github.com/ShovalBenjer/mcp-guard) agai
 **mcp-guard version: 0.2.1**
 **Payload ruleset version: 1**
 **Protocol version: 2024-11-05**
-**Methodology verified against code: 2026-10-06 (all counts below were computed from `src/mcp_guard/payloads.py` and `src/mcp_guard/fuzzer.py` on this commit; `tests/test_leaderboard_methodology.py` fails CI if they drift)**
+**Methodology (§1–§4) verified against code: 2026-10-06** (payload counts in §1 recomputed from `src/mcp_guard/payloads.py` and `src/mcp_guard/fuzzer.py` on this commit; `tests/test_leaderboard_methodology.py` fails CI if they drift)
 
 ## Rankings
 
@@ -14,6 +14,8 @@ Results from running [mcp-guard](https://github.com/ShovalBenjer/mcp-guard) agai
 |---|--------|-------|----------|---------|----------|------|---------|
 | 1 | @modelcontextprotocol/server-filesystem | 14 | 490 | 0 | 24 | 466 | FINDINGS |
 | 2 | @modelcontextprotocol/server-memory | 9 | 91 | 0 | 41 | 50 | FINDINGS |
+
+> The ranked rows were produced 2026-06-03 with mcp-guard 0.1.0 — before the indirect-injection probes (4 per string parameter, added 2026-09-26) entered the payload ruleset. Their payload totals would be higher under the current ruleset; they have not been re-run. New submissions are benchmarked under the methodology below.
 
 ## Key Findings
 
@@ -60,7 +62,7 @@ Payloads are schema-aware:
 - No-schema tools receive shell injection (8), SSRF (8), overflow subset (2), and prompt injection (6).
 - Integer parameters receive type confusion (8) plus max int64 overflow (1).
 
-### 2. Severity Weighting
+### 2. Severity Levels
 
 Each payload carries a severity assigned at generation time:
 
@@ -87,7 +89,7 @@ Benchmarks are run against a live server instance:
 
 Leaderboard runs use the defaults: **timeout 10 seconds per tool call** (`--timeout`), **delay 0 ms between payloads** (`--delay-ms`), **no retries** — a crashed call is recorded as CRASH and the fuzzer moves on. Deviations from these defaults must be disclosed in the submission.
 
-Every report carries provenance so a row can be reproduced: scanner name and version (installed `mcp-guard`), payload ruleset version, run id, UTC timestamp, and the exact target server command. These are printed in the table and JSON reports (`provenance` block).
+Every report carries provenance so a row can be reproduced: scanner name and version (installed `mcp-guard`), payload ruleset version, run id, UTC timestamp, and the exact target server command. These are printed in the table and JSON reports (the JSON report's `_provenance` block).
 
 ### 4. Response Classification
 
@@ -114,7 +116,7 @@ mcp-guard fuzz -- npx @modelcontextprotocol/server-memory
 mcp-guard fuzz -- npx @modelcontextprotocol/server-filesystem /tmp
 ```
 
-All output is deterministic given the same server version and input arguments.
+Payload generation and classification are deterministic given the same server version and input arguments; each report carries a unique run id and UTC timestamp.
 
 ### 6. Submitting New Entries
 
@@ -129,5 +131,5 @@ Required artifacts (attach all five to the PR; a submission missing any of them 
 Process:
 
 1. Run `mcp-guard fuzz --format json -- <server command>` with the defaults from §3. Note any flag deviations in the PR.
-2. Open a PR that adds your row to the Rankings table and (if new) a Key Findings subsection. Fill in `.github/pull_request_template.md` — every PR needs a linked issue (open one for the submission if none exists; `pr-link-check` CI fails without it).
+2. Open a PR that adds your row to the Rankings table and (if new) a Key Findings subsection following the format of the existing subsections above. Fill in `.github/pull_request_template.md` — every PR needs a linked issue (open one for the submission if none exists; `pr-link-check` CI fails without it).
 3. **Review**: a maintainer re-runs the submitted command with the same mcp-guard and ruleset versions. The row merges when the reproduced payload/finding/crash counts match the submission. Mismatches are resolved on the PR, not post-merge.
