@@ -18,7 +18,6 @@ from pathlib import Path
 import pytest
 
 from mcp_guard.fuzzer import FuzzEngine
-
 from mcp_guard.payloads import (
     Payload,
     Severity,
@@ -229,7 +228,7 @@ BLOG = REPO_ROOT / "docs" / "blog.html"
 # test_family_registry_complete enforces it stays in sync with
 # mcp_guard.payloads — so a new generate_* family breaks CI with a naming
 # message instead of silently going undocumented.
-FAMILY_GENERATORS: dict[str, "Callable[[], list[Payload]]"] = {
+FAMILY_GENERATORS: dict[str, Callable[[], list[Payload]]] = {
     "generate_shell_injection": generate_shell_injection,
     "generate_ssrf": generate_ssrf,
     "generate_overflow": generate_overflow,
