@@ -1,0 +1,86 @@
+# Release pipeline for mcp-guard (closes #37).
+#
+# Fires on tag push (v*). Steps, in order:
+#   1. fail-closed version guard — tag vX.Y.Z must equal [project].version
+#      in pyproject.toml (tools/release_check_version.py); mismatch aborts
+#      the run loudly, nothing is published half-way.
+#   2. build sdist + wheel via `python -m build`
+#   3. release notes generated from git history (previous tag..HEAD)
+#      via tools/release_notes.py
+#   4. SBOM (SPDX JSON) for the built artifacts
+#   5. Sigstore build-provenance attestation over dist/*
+#   6. publish to PyPI via OIDC trusted publishing — no API tokens stored
+#   7. GitHub Release with the generated notes + dist + SBOM attached
+#
+# Honest boundaries (read before tagging):
+# - PyPI trusted publishing needs a one-time pending-publisher registration
+#   on pypi.org for the mcp-guard project (account action, not in this
+#   repo). Until it is registered, step 6 fails loudly at the OIDC
+#   exchange — nothing is published silently.
+# - The version guard means: bump [project].version in pyproject.toml
+#   first, then push the matching vX.Y.Z tag.
+# - CHANGELOG.md stays curated by hand; release notes are generated fresh
+#   per release from git history.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # create the GitHub Release and upload assets
+  id-token: write # OIDC: PyPI trusted publishing + Sigstore attestation
+  attestations: write # Sigstore build-provenance attestation
+
+jobs:
+  release:
+    name: Build, attest, publish
+    runs-on: ubuntu-latest
+    environment: pypi # OIDC trusted-publisher scope; created on first run
+
+    steps:
+      - name: Check out (full history for changelog generation)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Version guard — tag must match pyproject version
+        run: python3 tools/release_check_version.py
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: Generate release notes from git history
+        run: python3 tools/release_notes.py > release-notes.md
+
+      - name: SBOM (SPDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./dist/
+          format: spdx-json
+          output-file: ./sbom.spdx.json
+
+      - name: Sigstore attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: "dist/*"
+
+      - name: Publish to PyPI (OIDC trusted publishing, no tokens)
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          files: |
+            dist/*
+            sbom.spdx.json
