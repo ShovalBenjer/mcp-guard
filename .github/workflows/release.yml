@@ -1,16 +1,26 @@
 # Release pipeline for mcp-guard (closes #37).
 #
 # Fires on tag push (v*). Steps, in order:
+#   0. pre-release checks — the full CI battery (pytest 3.11/3.12/3.13,
+#      ruff, mypy) runs on the tagged commit; the release job has
+#      `needs: [checks]`, so a red or untested commit can never publish.
+#      (Tag pushes bypass branch protection, so the gate lives here.)
 #   1. fail-closed version guard — tag vX.Y.Z must equal [project].version
 #      in pyproject.toml (tools/release_check_version.py); mismatch aborts
 #      the run loudly, nothing is published half-way.
-#   2. build sdist + wheel via `python -m build`
+#   2. build sdist + wheel via `python -m build` (pinned version)
 #   3. release notes generated from git history (previous tag..HEAD)
 #      via tools/release_notes.py
 #   4. SBOM (SPDX JSON) for the built artifacts
-#   5. Sigstore build-provenance attestation over dist/*
+#   5. Sigstore build-provenance attestation over dist/* AND the SBOM
 #   6. publish to PyPI via OIDC trusted publishing — no API tokens stored
 #   7. GitHub Release with the generated notes + dist + SBOM attached
+#
+# Pinning policy: every third-party action is pinned to a commit SHA
+# (tag shown in the trailing comment), because the PyPI publisher runs
+# with id-token:write — a moved floating tag would execute arbitrary
+# code holding the OIDC minting credential. The `build` backend is
+# pinned too: it runs immediately before the artifacts Sigstore attests.
 #
 # Honest boundaries (read before tagging):
 # - PyPI trusted publishing needs a one-time pending-publisher registration
@@ -21,6 +31,9 @@
 #   first, then push the matching vX.Y.Z tag.
 # - CHANGELOG.md stays curated by hand; release notes are generated fresh
 #   per release from git history.
+# - Re-running a tag workflow after a successful PyPI publish fails loudly
+#   at step 6 (PyPI rejects duplicate filenames); recovery is manual
+#   (`gh release create`) — there is no automated resume path.
 
 name: Release
 
@@ -35,14 +48,39 @@ permissions:
   attestations: write # Sigstore build-provenance attestation
 
 jobs:
+  checks:
+    name: Pre-release checks (gate)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]" --system
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+      - name: Lint
+        run: ruff check
+      - name: Type check
+        run: mypy src/mcp_guard
+
   release:
     name: Build, attest, publish
+    needs: [checks]
     runs-on: ubuntu-latest
     environment: pypi # OIDC trusted-publisher scope; created on first run
 
     steps:
       - name: Check out (full history for changelog generation)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -50,35 +88,37 @@ jobs:
         run: python3 tools/release_check_version.py
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
 
       - name: Build sdist and wheel
         run: |
-          python -m pip install --upgrade build
+          python -m pip install --upgrade "build==1.6.1"
           python -m build
 
       - name: Generate release notes from git history
         run: python3 tools/release_notes.py > release-notes.md
 
       - name: SBOM (SPDX JSON)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: ./dist/
           format: spdx-json
           output-file: ./sbom.spdx.json
 
       - name: Sigstore attest build provenance
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
-          subject-path: "dist/*"
+          subject-path: |
+            dist/*
+            sbom.spdx.json
 
       - name: Publish to PyPI (OIDC trusted publishing, no tokens)
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           body_path: release-notes.md
           files: |
