@@ -8,7 +8,10 @@
 #   1. fail-closed version guard — tag vX.Y.Z must equal [project].version
 #      in pyproject.toml (tools/release_check_version.py); mismatch aborts
 #      the run loudly, nothing is published half-way.
-#   2. build sdist + wheel via `python -m build` (pinned version)
+#   2. build sdist + wheel via `python -m build` with the build backend
+#      pinned too: `build==1.6.1` plus pinned setuptools/wheel and
+#      `--no-isolation`, so the PEP 517 backend is not resolved fresh
+#      from the network inside an isolated env at release time.
 #   3. release notes generated from git history (previous tag..HEAD)
 #      via tools/release_notes.py
 #   4. SBOM (SPDX JSON) for the built artifacts
@@ -19,8 +22,11 @@
 # Pinning policy: every third-party action is pinned to a commit SHA
 # (tag shown in the trailing comment), because the PyPI publisher runs
 # with id-token:write — a moved floating tag would execute arbitrary
-# code holding the OIDC minting credential. The `build` backend is
-# pinned too: it runs immediately before the artifacts Sigstore attests.
+# code holding the OIDC minting credential. The build toolchain is
+# pinned at both layers: the `build` frontend AND the setuptools/wheel
+# backend (via --no-isolation), since `build` otherwise resolves the
+# backend fresh from PyPI inside an isolated env seconds before
+# Sigstore attests the artifacts.
 #
 # Honest boundaries (read before tagging):
 # - PyPI trusted publishing needs a one-time pending-publisher registration
@@ -94,8 +100,8 @@ jobs:
 
       - name: Build sdist and wheel
         run: |
-          python -m pip install --upgrade "build==1.6.1"
-          python -m build
+          python -m pip install --upgrade "build==1.6.1" "setuptools==84.0.0" "wheel==0.48.0"
+          python -m build --no-isolation
 
       - name: Generate release notes from git history
         run: python3 tools/release_notes.py > release-notes.md
