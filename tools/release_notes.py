@@ -21,6 +21,22 @@ import sys
 
 REPO_URL = "https://github.com/ShovalBenjer/mcp-guard"
 _MERGE_SUBJECT = re.compile(r"^Merge (branch|pull request|remote)", re.IGNORECASE)
+_MD_ESCAPE = re.compile(r"([\\\[\]()!])")
+
+
+def escape_md(text: str) -> str:
+    """Escape Markdown metacharacters in an untrusted commit subject.
+
+    Commit subjects are fully attacker-influenced (a PR title becomes the
+    commit subject on squash-merge) and are rendered into the GitHub Release
+    body as Markdown; interpolated raw, a subject like
+    ``[critical security fix](https://evil.example/pwn)`` would render as a
+    live link or image on the project's trusted release surface. Backslash
+    escaping makes every metacharacter render literally. Also strips ``\\r``
+    so a crafted carriage return cannot hide a second line.
+    """
+    text = text.replace("\r", "")
+    return _MD_ESCAPE.sub(r"\\\1", text)
 
 
 def _git(repo: str, *args: str) -> str:
@@ -79,7 +95,7 @@ def format_notes(current: str, prev: str | None,
     else:
         lines += [f"Changes since `{prev}`:", ""]
         for sha, subject in commits:
-            lines.append(f"- {subject} ({sha})")
+            lines.append(f"- {escape_md(subject)} ({sha})")
         lines += [
             "",
             f"**Full changelog:** {REPO_URL}/compare/{prev}...{current}",
@@ -87,7 +103,7 @@ def format_notes(current: str, prev: str | None,
     if prev is None:
         lines += ["", "### Changes", ""]
         for sha, subject in commits:
-            lines.append(f"- {subject} ({sha})")
+            lines.append(f"- {escape_md(subject)} ({sha})")
     return "\n".join(lines) + "\n"
 
 
@@ -117,3 +133,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 from release_check_version import VersionMismatch, check, normalize_tag
 from release_notes import (
     _version_key,
+    escape_md,
     format_notes,
     generate,
     previous_tag,
@@ -194,3 +195,38 @@ def test_generate_excludes_merges(tmp_path):
     notes = generate(repo, "v0.2.0")
     assert "side work" in notes
     assert "Merge branch" not in notes
+
+
+
+# --- untrusted-subject markdown escaping (F1) ----------------------------
+
+
+class TestEscapeMd:
+    def test_link_neutralized(self):
+        evil = "[critical security fix](https://evil.example/pwn)"
+        notes = format_notes("v0.2.1", "v0.2.0", [("abc1234", evil)])
+        assert evil not in notes  # raw link must never reach the release body
+        assert r"\[critical security fix\]\(https://evil.example/pwn\)" in notes
+
+    def test_image_neutralized(self):
+        evil = "![x](https://evil.example/t.png)"
+        notes = format_notes("v0.2.1", "v0.2.0", [("abc1234", evil)])
+        assert evil not in notes
+        assert r"\!\[x\]\(https://evil.example/t.png\)" in notes
+
+    def test_backslash_escaped_first(self):
+        # a pre-escaped subject must not become an active link
+        assert escape_md("[a](b)") == "\\[a\\]\\(b\\)"
+        assert escape_md("a\\[b]") == "a\\\\\\[b\\]"
+
+    def test_cr_stripped(self):
+        assert escape_md("line one\r\nsmuggled line") == "line one\nsmuggled line"
+
+    def test_benign_subject_untouched(self):
+        assert escape_md("fix: handle timeouts in canary") == \
+            "fix: handle timeouts in canary"
+
+    def test_first_release_path_also_escaped(self):
+        evil = "[x](https://evil.example)"
+        notes = format_notes("v0.1.0", None, [("abc1234", evil)])
+        assert evil not in notes

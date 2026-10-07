@@ -5,6 +5,10 @@
 #      ruff, mypy) runs on the tagged commit; the release job has
 #      `needs: [checks]`, so a red or untested commit can never publish.
 #      (Tag pushes bypass branch protection, so the gate lives here.)
+#      Permissions are least-privilege per job: `checks` gets
+#      contents:read only — id-token:write and attestations:write exist
+#      only inside the release job, so a compromised dev dependency in
+#      the test path cannot mint an OIDC token.
 #   1. fail-closed version guard — tag vX.Y.Z must equal [project].version
 #      in pyproject.toml (tools/release_check_version.py); mismatch aborts
 #      the run loudly, nothing is published half-way.
@@ -48,14 +52,13 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write # create the GitHub Release and upload assets
-  id-token: write # OIDC: PyPI trusted publishing + Sigstore attestation
-  attestations: write # Sigstore build-provenance attestation
+permissions: {} # none at workflow level; each job declares its own minimum
 
 jobs:
   checks:
     name: Pre-release checks (gate)
+    permissions:
+      contents: read # checkout only — no OIDC minting, no write surface
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -81,6 +84,10 @@ jobs:
   release:
     name: Build, attest, publish
     needs: [checks]
+    permissions:
+      contents: write # create the GitHub Release and upload assets
+      id-token: write # OIDC: PyPI trusted publishing + Sigstore attestation
+      attestations: write # Sigstore build-provenance attestation
     runs-on: ubuntu-latest
     environment: pypi # OIDC trusted-publisher scope; created on first run
 
@@ -130,3 +137,4 @@ jobs:
           files: |
             dist/*
             sbom.spdx.json
+
