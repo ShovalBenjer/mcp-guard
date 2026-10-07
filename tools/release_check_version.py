@@ -16,7 +16,6 @@ from __future__ import annotations
 import os
 import re
 import sys
-
 import tomllib
 
 _SEMVER = re.compile(r"^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$")
