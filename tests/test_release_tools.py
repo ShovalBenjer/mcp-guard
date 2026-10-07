@@ -230,3 +230,22 @@ class TestEscapeMd:
         evil = "[x](https://evil.example)"
         notes = format_notes("v0.1.0", None, [("abc1234", evil)])
         assert evil not in notes
+
+    def test_angle_autolink_neutralized(self):
+        # CommonMark autolink syntax must not survive into the release body
+        evil = "<https://evil.example/pwn>"
+        notes = format_notes("v0.2.1", "v0.2.0", [("abc1234", evil)])
+        assert evil not in notes
+        assert r"\<https://evil.example/pwn\>" in notes
+
+    def test_raw_html_neutralized(self):
+        evil = "<script>alert(1)</script>"
+        notes = format_notes("v0.2.1", "v0.2.0", [("abc1234", evil)])
+        assert evil not in notes
+
+    def test_bare_url_is_accepted_residual(self):
+        # bare URLs (no markup chars) are autolinked by GFM's extension and
+        # cannot be neutralized by escaping; they render as the raw URL
+        # itself (no disguised link text) — documented accepted residual.
+        benign = "fix: see https://github.com/ShovalBenjer/mcp-guard/issues/37"
+        assert escape_md(benign) == benign

@@ -21,7 +21,7 @@ import sys
 
 REPO_URL = "https://github.com/ShovalBenjer/mcp-guard"
 _MERGE_SUBJECT = re.compile(r"^Merge (branch|pull request|remote)", re.IGNORECASE)
-_MD_ESCAPE = re.compile(r"([\\\[\]()!])")
+_MD_ESCAPE = re.compile(r"([\\\[\]()!<>])")
 
 
 def escape_md(text: str) -> str:
@@ -29,11 +29,22 @@ def escape_md(text: str) -> str:
 
     Commit subjects are fully attacker-influenced (a PR title becomes the
     commit subject on squash-merge) and are rendered into the GitHub Release
-    body as Markdown; interpolated raw, a subject like
-    ``[critical security fix](https://evil.example/pwn)`` would render as a
-    live link or image on the project's trusted release surface. Backslash
-    escaping makes every metacharacter render literally. Also strips ``\\r``
-    so a crafted carriage return cannot hide a second line.
+    body as Markdown. Escaped: the inline-link/image constructs ``[ ] ( )``
+    and ``!``, plus ``< >`` — which CommonMark treats as autolink delimiters
+    (``<https://evil.example>`` would otherwise render as a live link) and
+    as raw-HTML delimiters. A backslash-escaped metacharacter renders
+    literally. Also strips ``\\r`` so a crafted carriage return cannot hide
+    a second line.
+
+    Honest boundary (accepted residual): bare URLs with no markup
+    characters (``https://evil.example/pwn``, ``www.evil.example``,
+    ``a@b.example``) are autolinked by GitHub's GFM extension and cannot
+    be neutralized by escaping — there is no markup character to escape,
+    and any scheme that breaks the URL token (zero-width spaces,
+    mangling ``.``/``:``) degrades every benign URL in the notes with no
+    way to tell attacker URLs from benign ones. They render as the raw
+    URL itself (no disguised link text), which is the lower-severity,
+    conventional-release-notes case.
     """
     text = text.replace("\r", "")
     return _MD_ESCAPE.sub(r"\\\1", text)
