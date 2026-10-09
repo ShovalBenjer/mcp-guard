@@ -10,9 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-WORKFLOW = (
-    Path(__file__).resolve().parent.parent / ".github" / "workflows" / "codeql.yml"
-)
+WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "codeql.yml"
 
 
 @pytest.fixture(scope="module")
@@ -64,9 +62,7 @@ def test_weekly_schedule_mondays(doc: dict) -> None:
 
 def test_push_and_pull_request_triggers(doc: dict) -> None:
     on = doc["on"]
-    assert "push" in on and "pull_request" in on, (
-        "CodeQL must run on push and pull_request"
-    )
+    assert "push" in on and "pull_request" in on, "CodeQL must run on push and pull_request"
 
 
 def test_codeql_init_uses_matrix_language(analyze: dict) -> None:
@@ -79,6 +75,15 @@ def test_codeql_init_uses_matrix_language(analyze: dict) -> None:
     langs = init_steps[0]["with"]["languages"]
     assert "matrix.language" in langs, (
         "init must analyze the matrix language, not a hardcoded value"
+    )
+
+
+def test_analyze_step_present(analyze: dict) -> None:
+    # Contract item 3's mechanism: the permission alone is not enough —
+    # deleting the analyze step must break the suite.
+    uses = [str(s.get("uses", "")) for s in analyze["steps"]]
+    assert any(u.startswith("github/codeql-action/analyze@") for u in uses), (
+        "CodeQL analyze step (SARIF upload) missing"
     )
 
 
