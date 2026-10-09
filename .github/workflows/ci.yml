@@ -1,10 +1,22 @@
 name: CI
+# mcp-guard#27: mature CI — matrix testing, coverage, strict typing,
+# security gates (bandit + pip-audit), CycloneDX SBOM, fuzz gate,
+# and the leaderboard-methodology benchmark gate.
 on: [push, pull_request]
+
+# Superseded pushes cancel their own runs instead of burning 9 matrix jobs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (py${{ matrix.python-version }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
@@ -13,11 +25,115 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
       - name: Install dependencies
         run: uv pip install -e ".[dev]" --system
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+      - name: Run tests with coverage
+        # The premortem gate battery is excluded here and run ONLY by the
+        # fuzz-gate job, so a green fuzz-gate uniquely means the 5 failure
+        # modes were exercised. --cov-fail-under is a ratchet floor (~current
+        # coverage minus buffer), raised as coverage improves.
+        run: pytest tests/ -v --tb=short --ignore=tests/test_premortem_gates.py --cov=src/mcp_guard --cov-report=xml --cov-report=term --cov-fail-under=60
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
       - name: Lint
-        run: ruff check
-      - name: Type check
-        run: mypy src/mcp_guard
+        run: ruff check src/ tests/
+      - name: Format check
+        run: ruff format --check src/ tests/
+      - name: Type check (strict)
+        run: mypy --strict src/mcp_guard
+
+  security:
+    name: security gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]" --system
+      - name: Bandit security scan
+        # Single JSON run: the exit code is the gate, bandit-report.json is
+        # the uploaded evidence. (A second human-readable invocation after
+        # this would never execute when findings exist, since the first run
+        # exits 1 under the step's set -e.)
+        run: bandit -r src/mcp_guard/ -f json -o bandit-report.json
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+      - name: pip-audit dependency audit
+        run: pip-audit --desc
+
+  sbom:
+    name: SBOM (CycloneDX)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install project and SBOM tool
+        # The SBOM must describe mcp-guard's actual dependency tree: install
+        # the project first, otherwise `cyclonedx-py environment` would emit
+        # an SBOM of the bare runner interpreter instead.
+        run: |
+          uv pip install -e ".[dev]" --system
+          uv pip install cyclonedx-bom --system
+      - name: Generate CycloneDX SBOM
+        run: cyclonedx-py environment --of JSON -o sbom.cdx.json --pyproject pyproject.toml
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+
+  fuzz-gate:
+    name: fuzz gate (spec premortem failure modes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]" --system
+      - name: Run premortem gate battery (5 spec failure modes)
+        run: pytest tests/test_premortem_gates.py -v --tb=short
+
+  benchmark-gate:
+    name: benchmark gate (leaderboard methodology)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]" --system
+      - name: Reproduce leaderboard methodology (enumerate, fuzz, classify)
+        run: pytest tests/test_leaderboard_methodology.py -v --tb=short

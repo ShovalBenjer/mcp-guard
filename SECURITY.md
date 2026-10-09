@@ -30,7 +30,7 @@ mcp-guard is designed to detect the following failure modes in MCP servers it fu
 
 3. **False positives from expected errors**: A tool correctly rejecting bad input with a 400 error must not be flagged as a finding. mcp-guard classifies responses: expected errors = SAFE, unexpected errors = FINDING, crashes = CRASH.
 
-4. **Non-deterministic results**: Same payload producing different results across runs due to server state. mcp-guard documents non-determinism in reports and uses seed-based payload ordering for reproducibility in CI.
+4. **Non-deterministic results**: Same payload producing different results across runs due to server state. mcp-guard documents non-determinism in reports and uses deterministic payload ordering for reproducibility in CI.
 
 5. **MCP protocol version drift**: The MCP protocol spec evolves. mcp-guard pins protocol constants (currently `2024-11-05`) and fails gracefully on unknown message types.
 
@@ -43,8 +43,8 @@ mcp-guard is designed to detect the following failure modes in MCP servers it fu
 - `mypy --strict` type checking on every PR.
 
 ### CI/CD Security Gates
-- Matrix testing across Python 3.11, 3.12, 3.13 on Ubuntu.
-- Fuzz test suite (`tests/fuzz_test.py`) runs as a CI gate, specifically testing the 5 failure modes above.
+- Matrix testing across Python 3.11, 3.12, 3.13 on Ubuntu, Windows, and macOS.
+- Fuzz test suite (`tests/test_premortem_gates.py`, run by the `fuzz-gate` CI job) specifically testing the 5 failure modes above.
 
 ### Release Security
 - PyPI publishing uses trusted publishing (OIDC) — no long-lived API tokens.

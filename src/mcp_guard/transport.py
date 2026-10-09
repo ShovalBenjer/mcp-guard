@@ -62,6 +62,12 @@ class StdioTransport:
 
         Replaces bare asserts for stream narrowing: asserts vanish under
         ``python -O``, but a dead server stream must always raise here.
+
+        Deliberate semantic (not just a typing cleanup): unlike the old
+        asserts, this also requires the server to be *alive*. A terminated
+        server may still have buffered stdout, but that output is
+        untrustworthy (it may answer an earlier request — response ids are
+        not matched), so we fail loudly instead of returning it.
         """
         proc = self._proc
         if proc is None or not self.is_alive:
