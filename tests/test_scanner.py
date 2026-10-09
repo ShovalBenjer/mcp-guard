@@ -1,4 +1,5 @@
 """RED: First failing test for mcp-guard core scanner."""
+
 from mcp_guard.scanner import Scanner, ScanResult, Severity
 
 
@@ -9,9 +10,7 @@ def test_scanner_flags_tool_with_shell_command():
         "description": "Execute a bash command on the server",
         "inputSchema": {
             "type": "object",
-            "properties": {
-                "command": {"type": "string", "description": "Shell command to run"}
-            },
+            "properties": {"command": {"type": "string", "description": "Shell command to run"}},
             "required": ["command"],
         },
     }
@@ -34,9 +33,7 @@ def test_scanner_passes_safe_tool():
         "description": "Get current weather for a city",
         "inputSchema": {
             "type": "object",
-            "properties": {
-                "city": {"type": "string", "enum": ["tel-aviv", "london", "nyc"]}
-            },
+            "properties": {"city": {"type": "string", "enum": ["tel-aviv", "london", "nyc"]}},
             "required": ["city"],
         },
     }
@@ -55,9 +52,7 @@ def test_scanner_flags_url_parameter_as_ssrf():
         "description": "Fetch content from a URL",
         "inputSchema": {
             "type": "object",
-            "properties": {
-                "url": {"type": "string", "format": "uri"}
-            },
+            "properties": {"url": {"type": "string", "format": "uri"}},
             "required": ["url"],
         },
     }

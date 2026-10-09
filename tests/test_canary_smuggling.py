@@ -3,6 +3,7 @@
 All token generation is deterministic here via a stub factory; no network,
 no model calls.
 """
+
 import json
 
 from mcp_guard.canary import (
@@ -88,8 +89,7 @@ def test_canary_looped_into_source_tool_is_echo_not_drift():
     trap = _trap()
     _, canary = trap.smuggle("doc body", source="read_doc")
     verdict = trap.assess(
-        AgentAction(kind="tool_call", name="read_doc",
-                    text=json.dumps({"doc_id": canary.token}))
+        AgentAction(kind="tool_call", name="read_doc", text=json.dumps({"doc_id": canary.token}))
     )
     assert verdict.status == "echo"
 
@@ -98,8 +98,9 @@ def test_clean_action_has_no_hits():
     trap = _trap()
     trap.smuggle("doc body", source="read_doc")
     verdict = trap.assess(
-        AgentAction(kind="tool_call", name="send_email",
-                    text=json.dumps({"to": "a@b.c", "body": "hello"}))
+        AgentAction(
+            kind="tool_call", name="send_email", text=json.dumps({"to": "a@b.c", "body": "hello"})
+        )
     )
     assert verdict.status == "clean"
     assert verdict.severity == "info"
@@ -119,8 +120,7 @@ def test_multiple_canaries_attributed_to_correct_sources():
     _, c1 = trap.smuggle("aaa", source="tool_a")
     _, c2 = trap.smuggle("bbb", source="tool_b")
     verdict = trap.assess(
-        AgentAction(kind="tool_call", name="tool_c",
-                    text=f"{c1.token} and {c2.token}")
+        AgentAction(kind="tool_call", name="tool_c", text=f"{c1.token} and {c2.token}")
     )
     assert verdict.status == "goal_drift"
     assert {h.canary.source for h in verdict.hits} == {"tool_a", "tool_b"}
