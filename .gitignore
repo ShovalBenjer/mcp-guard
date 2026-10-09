@@ -108,11 +108,11 @@ junit.xml
 test-results/
 coverage/
 
-# SBOM (release pipeline output: release.yml writes ./sbom.spdx.json)
-*.spdx.json
+# SBOM (release pipeline output: release.yml writes ./sbom.spdx.json at repo root)
+/sbom.spdx.json
 
-# Release notes (release pipeline output: release.yml writes ./release-notes.md)
-release-notes.md
+# Release notes (release pipeline output: release.yml writes ./release-notes.md at repo root)
+/release-notes.md
 
 # Secrets
 *.pem
