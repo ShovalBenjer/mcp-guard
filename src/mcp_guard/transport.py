@@ -1,22 +1,29 @@
 """Stdio MCP transport — spawns server subprocess and communicates via JSON-RPC."""
+
 from __future__ import annotations
 
 import json
 import queue
-import subprocess
+import subprocess  # nosec B404 - stdio subprocess spawning is the transport's entire purpose
 import threading
-from typing import Any
+from types import TracebackType
+from typing import IO, Any, Self, cast
+
+JsonDict = dict[str, Any]
+"""A JSON-RPC message or result object. Values are dynamically shaped per
+method, so the boundary type stays permissive while every field access in
+typed code goes through declared JsonDict locals (never bare ``dict``)."""
 
 
 class StdioTransport:
     def __init__(self, command: list[str], timeout: float = 10.0):
         self._command = command
         self._timeout = timeout
-        self._proc: subprocess.Popen | None = None
+        self._proc: subprocess.Popen[str] | None = None
         self._request_id = 0
 
     def start(self) -> None:
-        self._proc = subprocess.Popen(
+        self._proc = subprocess.Popen(  # nosec B603 - spawns the operator's own MCP server command
             self._command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -34,27 +41,46 @@ class StdioTransport:
             except subprocess.TimeoutExpired:
                 self._proc.kill()
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         self.start()
         return self
 
-    def __exit__(self, *args):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         self.stop()
 
     @property
     def is_alive(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
 
-    def _send(self, method: str, params: dict | None = None) -> dict:
-        if not self._proc or not self.is_alive:
-            raise ConnectionError("Server not running")
+    def _require_streams(self) -> tuple[IO[str], IO[str]]:
+        """Return (stdin, stdout) or raise ConnectionError.
+
+        Replaces bare asserts for stream narrowing: asserts vanish under
+        ``python -O``, but a dead server stream must always raise here.
+
+        Deliberate semantic (not just a typing cleanup): unlike the old
+        asserts, this also requires the server to be *alive*. A terminated
+        server may still have buffered stdout, but that output is
+        untrustworthy (it may answer an earlier request — response ids are
+        not matched), so we fail loudly instead of returning it.
+        """
         proc = self._proc
-        assert proc is not None
-        assert proc.stdin is not None
-        assert proc.stdout is not None
+        if proc is None or not self.is_alive:
+            raise ConnectionError("Server not running")
+        if proc.stdin is None or proc.stdout is None:
+            raise ConnectionError("Server streams unavailable")
+        return proc.stdin, proc.stdout
+
+    def _send(self, method: str, params: JsonDict | None = None) -> JsonDict:
+        stdin, _ = self._require_streams()
 
         self._request_id += 1
-        request: dict[str, Any] = {
+        request: JsonDict = {
             "jsonrpc": "2.0",
             "id": self._request_id,
             "method": method,
@@ -63,19 +89,15 @@ class StdioTransport:
             request["params"] = params
 
         line = json.dumps(request) + "\n"
-        proc.stdin.write(line)
-        proc.stdin.flush()
+        stdin.write(line)
+        stdin.flush()
 
         return self._read_response()
 
-    def _notify(self, method: str, params: dict | None = None) -> None:
-        if not self._proc or not self.is_alive:
-            raise ConnectionError("Server not running")
-        proc = self._proc
-        assert proc is not None
-        assert proc.stdin is not None
+    def _notify(self, method: str, params: JsonDict | None = None) -> None:
+        stdin, _ = self._require_streams()
 
-        notification: dict[str, Any] = {
+        notification: JsonDict = {
             "jsonrpc": "2.0",
             "method": method,
         }
@@ -83,14 +105,11 @@ class StdioTransport:
             notification["params"] = params
 
         line = json.dumps(notification) + "\n"
-        proc.stdin.write(line)
-        proc.stdin.flush()
+        stdin.write(line)
+        stdin.flush()
 
-    def _read_response(self) -> dict:
-        proc = self._proc
-        assert proc is not None
-        assert proc.stdout is not None
-        stdout = proc.stdout  # capture: mypy-narrowed, safe inside the closure
+    def _read_response(self) -> JsonDict:
+        _, stdout = self._require_streams()
 
         q: queue.Queue[str | None] = queue.Queue()
 
@@ -107,46 +126,50 @@ class StdioTransport:
         if thread.is_alive():
             if self._proc and self._proc.poll() is None:
                 self._proc.kill()
-            raise TimeoutError(
-                f"No response from server within {self._timeout}s timeout"
-            )
+            raise TimeoutError(f"No response from server within {self._timeout}s timeout")
 
         response_line = q.get()
         if not response_line:
             raise ConnectionError("Server closed connection")
         try:
-            response = json.loads(response_line)
+            response: JsonDict = json.loads(response_line)
         except json.JSONDecodeError:
             raise ConnectionError("Invalid JSON response from server")
         if "method" in response and "id" not in response:
             raise ConnectionError("Invalid JSON response from server")
         if "error" in response:
             raise RuntimeError(f"MCP error: {response['error']}")
-        return response.get("result", {})
+        return cast("JsonDict", response.get("result", {}))
 
-    def _initialize(self) -> dict:
-        result = self._send("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "mcp-guard", "version": "0.2.1"},
-        })
+    def _initialize(self) -> JsonDict:
+        result = self._send(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "mcp-guard", "version": "0.2.1"},
+            },
+        )
         self._notify("notifications/initialized")
         return result
 
-    def list_tools(self) -> list[dict]:
+    def list_tools(self) -> list[JsonDict]:
         result = self._send("tools/list")
-        return result.get("tools", [])
+        return cast("list[JsonDict]", result.get("tools", []))
 
-    def list_resources(self) -> list[dict]:
+    def list_resources(self) -> list[JsonDict]:
         result = self._send("resources/list")
-        return result.get("resources", [])
+        return cast("list[JsonDict]", result.get("resources", []))
 
-    def list_prompts(self) -> list[dict]:
+    def list_prompts(self) -> list[JsonDict]:
         result = self._send("prompts/list")
-        return result.get("prompts", [])
+        return cast("list[JsonDict]", result.get("prompts", []))
 
-    def call_tool(self, tool_name: str, arguments: dict) -> dict:
-        return self._send("tools/call", {
-            "name": tool_name,
-            "arguments": arguments,
-        })
+    def call_tool(self, tool_name: str, arguments: JsonDict) -> JsonDict:
+        return self._send(
+            "tools/call",
+            {
+                "name": tool_name,
+                "arguments": arguments,
+            },
+        )

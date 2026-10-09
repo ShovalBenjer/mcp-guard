@@ -1,4 +1,5 @@
 """Tests for report provenance (Finding A) and deterministic numeric validation (Finding B)."""
+
 import io
 import json
 
@@ -10,8 +11,12 @@ from mcp_guard.report import FuzzReport, scanner_version
 
 def _result(tool="t", category=ResultCategory.FINDING, severity="high"):
     return FuzzResult(
-        tool_name=tool, probe_name="p", payload_value="x",
-        category=category, rule_id="r", severity=severity,
+        tool_name=tool,
+        probe_name="p",
+        payload_value="x",
+        category=category,
+        rule_id="r",
+        severity=severity,
     )
 
 
@@ -22,8 +27,10 @@ def _report():
         _result(tool="b", category=ResultCategory.CRASH, severity="critical"),
     ]
     return FuzzReport(
-        server_command="npx some-server", tools_fuzzed=2,
-        total_payloads=3, results=results,
+        server_command="npx some-server",
+        tools_fuzzed=2,
+        total_payloads=3,
+        results=results,
     )
 
 
@@ -31,8 +38,15 @@ def test_provenance_block_present_and_never_empty():
     buf = io.StringIO()
     _report().to_json(buf)
     prov = json.loads(buf.getvalue())["_provenance"]
-    for key in ("scanner", "scanner_version", "run_id", "run_at",
-                "data_source", "payload_ruleset_version", "report_schema"):
+    for key in (
+        "scanner",
+        "scanner_version",
+        "run_id",
+        "run_at",
+        "data_source",
+        "payload_ruleset_version",
+        "report_schema",
+    ):
         assert prov.get(key), f"provenance missing/empty: {key}"
     assert prov["scanner"] == "mcp-guard"
     assert prov["data_source"] == "npx some-server"

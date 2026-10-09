@@ -1,4 +1,5 @@
 """RED: Failing tests for adversarial payload generators."""
+
 from mcp_guard.payloads import (
     generate_overflow,
     generate_prompt_injection,

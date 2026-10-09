@@ -1,4 +1,5 @@
 """Fuzz engine — orchestrates adversarial payload delivery to MCP tools."""
+
 from __future__ import annotations
 
 import re
@@ -52,7 +53,7 @@ class FuzzResult:
 
 
 class Transport(Protocol):
-    def call_tool(self, tool_name: str, arguments: dict) -> dict: ...
+    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]: ...
 
 
 class FuzzEngine:
@@ -60,7 +61,7 @@ class FuzzEngine:
         self._transport = transport
         self._delay_ms = delay_ms
 
-    def fuzz_tool(self, tool: dict) -> list[FuzzResult]:
+    def fuzz_tool(self, tool: dict[str, Any]) -> list[FuzzResult]:
         tool_name = tool.get("name", "unknown")
         schema = tool.get("inputSchema", {})
         properties = schema.get("properties", {})
@@ -85,6 +86,7 @@ class FuzzEngine:
             generate_shell_injection,
             generate_ssrf,
         )
+
         all_payloads = (
             generate_shell_injection()
             + generate_ssrf()
@@ -129,15 +131,13 @@ class FuzzEngine:
         return self._classify_response(tool_name, param_name, payload, response)
 
     def _classify_response(
-        self, tool_name: str, param_name: str, payload: Payload, response: dict
+        self, tool_name: str, param_name: str, payload: Payload, response: dict[str, Any]
     ) -> FuzzResult:
         is_error = response.get("isError", False)
         content = response.get("content", [])
         text = ""
         if content and isinstance(content, list):
-            text = " ".join(
-                c.get("text", "") for c in content if isinstance(c, dict)
-            )
+            text = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
 
         if is_error:
             return FuzzResult(
@@ -189,7 +189,16 @@ class FuzzEngine:
 
         leaked = any(
             kw in text_lower
-            for kw in ("traceback", "exception", "stack trace", "error:", "internal", "password", "secret", "token")
+            for kw in (
+                "traceback",
+                "exception",
+                "stack trace",
+                "error:",
+                "internal",
+                "password",
+                "secret",
+                "token",
+            )
         )
         if leaked:
             return FuzzResult(

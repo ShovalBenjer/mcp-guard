@@ -1,4 +1,5 @@
 """CLI entry point for mcp-guard adversarial fuzzer."""
+
 from __future__ import annotations
 
 import argparse
@@ -42,7 +43,9 @@ def main(argv: list[str] | None = None) -> None:
     fuzz_parser = sub.add_parser("fuzz", help="Fuzz an MCP server via stdio transport")
     fuzz_parser.add_argument("--format", choices=["table", "json", "sarif"], default="table")
     fuzz_parser.add_argument("--delay-ms", type=int, default=0, help="Delay between payloads (ms)")
-    fuzz_parser.add_argument("--timeout", type=float, default=10.0, help="Per-tool-call timeout (seconds)")
+    fuzz_parser.add_argument(
+        "--timeout", type=float, default=10.0, help="Per-tool-call timeout (seconds)"
+    )
     fuzz_parser.add_argument("server_command", nargs=argparse.REMAINDER)
 
     # scan subcommand (static analysis)
