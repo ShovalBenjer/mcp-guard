@@ -1,4 +1,5 @@
 """RED: Failing tests for fuzz engine core."""
+
 from mcp_guard.fuzzer import FuzzEngine, FuzzResult, ResultCategory
 
 
@@ -16,7 +17,10 @@ class FakeTransport:
         if self.crashed:
             raise ConnectionError("Server crashed")
         if self.reject_all:
-            return {"isError": True, "content": [{"type": "text", "text": "Invalid input rejected"}]}
+            return {
+                "isError": True,
+                "content": [{"type": "text", "text": "Invalid input rejected"}],
+            }
         key = f"{tool_name}:{sorted(arguments.items())}"
         return self.responses.get(key, {"content": [{"type": "text", "text": "ok"}]})
 
@@ -137,6 +141,7 @@ def test_delay_ms_zero_means_no_sleep():
     real_sleep = time_module.sleep
     slept = False
     try:
+
         def _spy(s: float) -> None:
             nonlocal slept
             slept = True

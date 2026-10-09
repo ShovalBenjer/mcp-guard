@@ -1,4 +1,5 @@
 """Stdio MCP transport — spawns server subprocess and communicates via JSON-RPC."""
+
 from __future__ import annotations
 
 import json
@@ -107,9 +108,7 @@ class StdioTransport:
         if thread.is_alive():
             if self._proc and self._proc.poll() is None:
                 self._proc.kill()
-            raise TimeoutError(
-                f"No response from server within {self._timeout}s timeout"
-            )
+            raise TimeoutError(f"No response from server within {self._timeout}s timeout")
 
         response_line = q.get()
         if not response_line:
@@ -125,11 +124,14 @@ class StdioTransport:
         return response.get("result", {})
 
     def _initialize(self) -> dict:
-        result = self._send("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "mcp-guard", "version": "0.2.1"},
-        })
+        result = self._send(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "mcp-guard", "version": "0.2.1"},
+            },
+        )
         self._notify("notifications/initialized")
         return result
 
@@ -146,7 +148,10 @@ class StdioTransport:
         return result.get("prompts", [])
 
     def call_tool(self, tool_name: str, arguments: dict) -> dict:
-        return self._send("tools/call", {
-            "name": tool_name,
-            "arguments": arguments,
-        })
+        return self._send(
+            "tools/call",
+            {
+                "name": tool_name,
+                "arguments": arguments,
+            },
+        )

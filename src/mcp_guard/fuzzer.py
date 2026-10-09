@@ -1,4 +1,5 @@
 """Fuzz engine — orchestrates adversarial payload delivery to MCP tools."""
+
 from __future__ import annotations
 
 import re
@@ -85,6 +86,7 @@ class FuzzEngine:
             generate_shell_injection,
             generate_ssrf,
         )
+
         all_payloads = (
             generate_shell_injection()
             + generate_ssrf()
@@ -135,9 +137,7 @@ class FuzzEngine:
         content = response.get("content", [])
         text = ""
         if content and isinstance(content, list):
-            text = " ".join(
-                c.get("text", "") for c in content if isinstance(c, dict)
-            )
+            text = " ".join(c.get("text", "") for c in content if isinstance(c, dict))
 
         if is_error:
             return FuzzResult(
@@ -189,7 +189,16 @@ class FuzzEngine:
 
         leaked = any(
             kw in text_lower
-            for kw in ("traceback", "exception", "stack trace", "error:", "internal", "password", "secret", "token")
+            for kw in (
+                "traceback",
+                "exception",
+                "stack trace",
+                "error:",
+                "internal",
+                "password",
+                "secret",
+                "token",
+            )
         )
         if leaked:
             return FuzzResult(

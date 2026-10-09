@@ -12,6 +12,7 @@ rule ids via scanner.py AST; CLI flags via cli.py AST; dataclass fields).
 The literals 29/37/9/24 are the doc's own table values, asserted equal to the
 code — never the other way round.
 """
+
 from __future__ import annotations
 
 import ast
@@ -83,11 +84,10 @@ def test_sequence_diagrams_for_handshake_fuzz_and_scan() -> None:
 
 # --- Payload counts: doc table vs live generators -----------------------------
 
+
 def _counts_table() -> dict[str, int]:
     rows: dict[str, int] = {}
-    for m in re.finditer(
-        r"^\|\s*([^|]+?)\s*\|\s*(\d+)\s*\|$", _doc(), re.MULTILINE
-    ):
+    for m in re.finditer(r"^\|\s*([^|]+?)\s*\|\s*(\d+)\s*\|$", _doc(), re.MULTILINE):
         rows[m.group(1).strip()] = int(m.group(2))
     return rows
 
@@ -95,23 +95,28 @@ def _counts_table() -> dict[str, int]:
 def test_payload_counts_match_live_generators() -> None:
     """The per-input-type table must equal the real generator output."""
     table = _counts_table()
-    assert table["String parameter"] == len(
-        generate_all_for_param("q", {"type": "string"})
-    ) == 29
-    assert table["URI-typed string parameter"] == len(
-        generate_all_for_param("url", {"type": "string", "format": "uri"})
-    ) == 37
-    assert table["Integer / number parameter"] == len(
-        generate_all_for_param("n", {"type": "integer"})
-    ) == 9
+    assert table["String parameter"] == len(generate_all_for_param("q", {"type": "string"})) == 29
+    assert (
+        table["URI-typed string parameter"]
+        == len(generate_all_for_param("url", {"type": "string", "format": "uri"}))
+        == 37
+    )
+    assert (
+        table["Integer / number parameter"]
+        == len(generate_all_for_param("n", {"type": "integer"}))
+        == 9
+    )
     # No-schema: through the real firing path, not a re-typed formula — a
     # composition change in _fuzz_no_schema must break this test.
-    assert table["No input schema"] == len(
-        FuzzEngine(transport=_NullTransport()).fuzz_tool({"name": "t"})
-    ) == 24
+    assert (
+        table["No input schema"]
+        == len(FuzzEngine(transport=_NullTransport()).fuzz_tool({"name": "t"}))
+        == 24
+    )
 
 
 # --- Transport facts -----------------------------------------------------------
+
 
 def test_handshake_version_and_client_info() -> None:
     """Protocol version and client info must match the live transport."""
@@ -137,6 +142,7 @@ def test_transport_error_semantics_documented() -> None:
 
 
 # --- Classifier: code mechanisms described in the doc ---------------------------
+
 
 def test_classifier_mechanisms_described() -> None:
     """Canary reflection, exfil channel and evidence-graded default are real
@@ -170,6 +176,7 @@ def test_scanner_rule_ids_match_code() -> None:
 
 
 # --- CLI: options and exit codes -------------------------------------------------
+
 
 def _cli_option_names() -> set[str]:
     tree = ast.parse(_source("cli.py"))
@@ -225,6 +232,7 @@ def test_cli_exit_codes_documented() -> None:
 
 # --- Data model: doc code blocks vs live dataclasses ------------------------------
 
+
 def test_data_model_fields_match_dataclasses() -> None:
     """The doc's dataclass listings must name the real fields, all of them."""
     doc = _doc()
@@ -237,9 +245,9 @@ def test_data_model_fields_match_dataclasses() -> None:
         ("Payload", payloads),
     ):
         for f in fields(getattr(mod, cls)):
-            assert re.search(
-                rf"^\s*{f.name}\s*:", doc, re.MULTILINE
-            ), f"doc omits dataclass field {cls}.{f.name}"
+            assert re.search(rf"^\s*{f.name}\s*:", doc, re.MULTILINE), (
+                f"doc omits dataclass field {cls}.{f.name}"
+            )
 
 
 def test_report_provenance_and_verify_counts_documented() -> None:

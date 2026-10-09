@@ -112,8 +112,7 @@ class TestPreviousTag:
 
 class TestFormatNotes:
     def test_compare_link_present(self):
-        notes = format_notes("v0.2.1", "v0.2.0",
-                             [("abc1234", "fix: thing")])
+        notes = format_notes("v0.2.1", "v0.2.0", [("abc1234", "fix: thing")])
         assert "compare/v0.2.0...v0.2.1" in notes
         assert "fix: thing (abc1234)" in notes
 
@@ -131,8 +130,7 @@ class TestFormatNotes:
 
 def _init_repo(path: str) -> None:
     subprocess.run(["git", "init", "-q", path], check=True)
-    subprocess.run(["git", "-C", path, "config", "user.email", "t@t"],
-                   check=True)
+    subprocess.run(["git", "-C", path, "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", path, "config", "user.name", "t"], check=True)
 
 
@@ -180,14 +178,11 @@ def test_generate_excludes_merges(tmp_path):
     _init_repo(repo)
     _commit(repo, "a", "base")
     _tag(repo, "v0.1.0")
-    subprocess.run(["git", "-C", repo, "checkout", "-q", "-b", "feat"],
-                   check=True)
+    subprocess.run(["git", "-C", repo, "checkout", "-q", "-b", "feat"], check=True)
     _commit(repo, "b", "side work")
-    subprocess.run(["git", "-C", repo, "checkout", "-q", "master"],
-                   check=True)
+    subprocess.run(["git", "-C", repo, "checkout", "-q", "master"], check=True)
     subprocess.run(
-        ["git", "-C", repo, "merge", "-q", "--no-ff", "feat",
-         "-m", "Merge branch 'feat'"],
+        ["git", "-C", repo, "merge", "-q", "--no-ff", "feat", "-m", "Merge branch 'feat'"],
         check=True,
     )
     _tag(repo, "v0.2.0")
@@ -195,7 +190,6 @@ def test_generate_excludes_merges(tmp_path):
     notes = generate(repo, "v0.2.0")
     assert "side work" in notes
     assert "Merge branch" not in notes
-
 
 
 # --- untrusted-subject markdown escaping (F1) ----------------------------
@@ -223,8 +217,7 @@ class TestEscapeMd:
         assert escape_md("line one\r\nsmuggled line") == "line one\nsmuggled line"
 
     def test_benign_subject_untouched(self):
-        assert escape_md("fix: handle timeouts in canary") == \
-            "fix: handle timeouts in canary"
+        assert escape_md("fix: handle timeouts in canary") == "fix: handle timeouts in canary"
 
     def test_first_release_path_also_escaped(self):
         evil = "[x](https://evil.example)"

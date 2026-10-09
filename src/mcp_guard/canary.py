@@ -29,6 +29,7 @@ quoting a tool output (e.g. "here is the file you asked for") produces an
 ``echo`` hit — treat ``echo`` as review-grade, ``goal_drift`` as
 high-confidence.
 """
+
 from __future__ import annotations
 
 import secrets
@@ -99,9 +100,7 @@ class CanaryTrap:
         marked = text + f"\n[{canary.token}]"
         return marked, canary
 
-    def smuggle_tool_result(
-        self, result: dict, source: str
-    ) -> tuple[dict, list[Canary]]:
+    def smuggle_tool_result(self, result: dict, source: str) -> tuple[dict, list[Canary]]:
         """Mark every text block of an MCP tool result with its own canary.
 
         Non-text blocks are left untouched. Returns the marked result (a
@@ -148,11 +147,7 @@ class CanaryTrap:
             return CanaryVerdict(
                 status="clean", severity="info", hits=(), summary="no canary in action"
             )
-        drift = [
-            h
-            for h in hits
-            if h.sink_kind == "tool_call" and h.sink_name != h.canary.source
-        ]
+        drift = [h for h in hits if h.sink_kind == "tool_call" and h.sink_name != h.canary.source]
         if drift:
             sources = sorted({h.canary.source for h in drift})
             sinks = sorted({h.sink_name for h in drift})
