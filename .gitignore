@@ -111,6 +111,9 @@ coverage/
 # SBOM (release pipeline output: release.yml writes ./sbom.spdx.json)
 *.spdx.json
 
+# Release notes (release pipeline output: release.yml writes ./release-notes.md)
+release-notes.md
+
 # Secrets
 *.pem
 *.key
