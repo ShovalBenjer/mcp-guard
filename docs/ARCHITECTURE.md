@@ -144,13 +144,18 @@ flowchart TD
 
 ### Response Classification
 
-The `_classify_response` method implements a 4-tier classification:
+`_classify_response` maps a tool call's outcome to a category plus an evidence-graded severity. The deliberate default is **FINDING, never SAFE**: for a pre-deployment security fuzzer, a silently-executed payload is observationally identical to a neutralized one, and resolving that ambiguity as SAFE would let a CLEAN verdict assert safety it cannot verify.
 
-1. **SAFE**: `isError: true` — the server explicitly rejected the payload.
-2. **FINDING** (info leak): `isError: false` but response text contains keywords like `traceback`, `exception`, `stack trace`, `password`, `secret`, `token`.
-3. **FINDING** (accepted): `isError: false` and no leakage — payload was silently accepted.
-4. **CRASH**: `ConnectionError` raised during `call_tool`.
-5. **ERROR**: Any other exception during delivery.
+| Outcome | Category | Severity | Rule ID pattern |
+|---------|----------|----------|-----------------|
+| `isError: true` — server explicitly rejected the payload | SAFE | payload's severity | — |
+| Payload was an `indirect-injection` probe and `INDIRECT_CANARY` appears in the tool **output** — attacker-controlled input was reflected onto the data channel a downstream agent reads (OWASP ASI01, EchoLeak/CurXecute pattern) | FINDING | high | `reflection-untrusted-echo` |
+| Payload was an `indirect-injection` probe and the tool output contains a markdown image pointing at an external URL — an exfil channel | FINDING | critical | `indirect-injection-exfil-channel` |
+| `isError: false` and the response text leaks internal information (keywords: `traceback`, `exception`, `stack trace`, `error:`, `internal`, `password`, `secret`, `token`) | FINDING | high | `{payload.rule_id}-info-leak` |
+| Payload bytes (≥6 chars) were reflected in the tool output but nothing executed — reflection is not execution. Execution-class payloads (shell, SSRF, overflow) are capped at medium; only `prompt-injection`/`indirect-injection` keep the payload's severity, because there the reflection itself reaches a downstream agent | FINDING | medium (or payload severity for prompt-injection) | `{payload.rule_id}-unconfirmed-reflection` |
+| Payload produced no observable effect — not reflected, no error, no leak. Silent execution cannot be ruled out by black-box probing alone | FINDING | info | `{payload.rule_id}-no-observable-effect` |
+| `ConnectionError` raised during `call_tool` — the server process died or closed the connection | CRASH | payload's severity | payload's `rule_id` |
+| Any other exception during delivery | ERROR | payload's severity | payload's `rule_id` |
 
 ---
 
@@ -162,7 +167,7 @@ The `_classify_response` method implements a 4-tier classification:
 
 | Rule ID | Severity | Condition |
 |---------|----------|-----------|
-| `shell-injection` | CRITICAL | Tool name or description contains shell-related keywords (`bash`, `shell`, `command`, `exec`, `powershell`, etc.) OR a parameter description matches those keywords |
+| `shell-injection` | CRITICAL | Tool name or description contains shell-related keywords (`bash`, `shell`, `command`, `exec`, `powershell`, etc.) OR a parameter name or description matches those keywords |
 | `ssrf-risk` | CRITICAL / WARNING | Parameter has `format: uri` or name/description matches URL keywords. Downgraded to WARNING if the parameter has an `enum` constraint |
 | `missing-schema` | WARNING | Tool has no `inputSchema` or no `properties` defined |
 
@@ -179,6 +184,38 @@ flowchart LR
     E -->|yes| F[return findings]
     E -->|no| G[PASS]
 ```
+
+### Sequence Diagram: Static Scan Flow
+
+```mermaid
+sequenceDiagram
+    participant C as CLI
+    participant T as StdioTransport
+    participant S as MCP Server
+    participant K as Scanner
+
+    C->>T: start()
+    T->>S: subprocess.Popen + handshake
+    T-->>C: connected
+
+    C->>T: list_tools()
+    T->>S: tools/list
+    S-->>T: { tools: [...] }
+
+    loop for each tool
+        C->>K: scan_tool(tool)
+        K->>K: _check_shell_injection(name, desc, properties)
+        K->>K: _check_ssrf(properties)
+        K->>K: _check_missing_schema(schema)
+        K-->>C: list[ScanResult]
+        C->>C: log [SEVERITY] tool: message / [PASS]
+    end
+
+    C->>T: stop()
+    T->>S: terminate()
+```
+
+Note the scan path reports through the logging channel (one `[SEVERITY]`/`[PASS]` line per tool); it does not build a `FuzzReport`. No payloads are ever fired — the server is only asked to describe itself.
 
 ---
 
@@ -206,6 +243,10 @@ Includes a `summary` block and a `results` array. SAFE results are excluded from
 
 Maps each non-SAFE result to a SARIF `result` object with `ruleId`, `level` (`error` for crashes, `warning` for findings), `message`, and `physicalLocation` (`mcp://{tool_name}`).
 
+### Provenance and count verification
+
+Every emitted report carries a `_provenance` block (scanner identity, scanner version, run id, UTC timestamp, data source, payload-ruleset version), so a downstream consumer can answer "where did this number come from?" without trusting the channel the report arrived on. Every summary number is recomputed from the raw results list by `verify_counts()`; the formatters refuse to emit a report whose summary disagrees with its results — numbers are derived in code, never narrated.
+
 ---
 
 ## CLI Interface
@@ -217,19 +258,21 @@ The CLI is built on `argparse` with two subcommands: `fuzz` and `scan`.
 | Subcommand | Description | Options |
 |------------|-------------|---------|
 | `fuzz` | Dynamic fuzzing of a running MCP server | `--format` (table/json/sarif), `--delay-ms`, `--timeout` |
-| `scan` | Static schema scan (no server spawn) | `--format` (table/json) |
+| `scan` | Static schema scan (no payloads fired) | `--format` (table/json) |
+
+The `scan` subcommand accepts `--format` but currently reports through the logging channel (one `[SEVERITY] tool: message` / `[PASS]` line per tool) rather than formatted output. Both subcommands accept the server command after `--` and strip `--` tokens from the command list before passing it to `StdioTransport`. Global flags: `--verbose`, `--quiet` (logging verbosity).
 
 ### Exit Codes
 
 | Code | Meaning |
 |------|---------|
-| `0` | All payloads handled safely |
+| `0` | Clean — no crashes; informational findings are still reported |
 | `1` | Error (connection failure, bad arguments) |
 | `2` | Crashes detected |
 
 ### Argument Parsing
 
-Both subcommands accept the server command after `--`. The `fuzz` subcommand strips `--` tokens from the command list before passing to `StdioTransport`.
+Both subcommands accept the server command after `--`. The `fuzz` subcommand strips `--` tokens from the command list before passing to `StdioTransport` (the `scan` subcommand does the same).
 
 ---
 
@@ -286,4 +329,4 @@ mcp-guard has **zero runtime dependencies**. It uses only Python 3.11+ stdlib mo
 - `argparse` — CLI argument parsing
 - `typing` — type hints and Protocol definitions
 
-Dev dependencies (`pytest`, `ruff`, `mypy`) are optional and only needed for development.
+Dev dependencies (`pytest`, `pytest-cov`, `ruff`, `mypy`, `pyyaml`) are optional and only needed for development.
