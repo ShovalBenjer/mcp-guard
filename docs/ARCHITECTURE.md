@@ -2,7 +2,7 @@
 
 ## Overview
 
-mcp-guard is a zero-dependency Python library and CLI tool for adversarial fuzzing of MCP (Model Context Protocol) servers. It operates in two modes: **dynamic fuzzing** (spawning a server and sending real payloads) and **static scanning** (analyzing schemas without execution).
+mcp-guard is a zero-dependency Python library and CLI tool for adversarial fuzzing of MCP (Model Context Protocol) servers. It operates in two modes: **dynamic fuzzing** (spawning a server and sending real payloads) and **static scanning** (analyzing tool schemas — the server is spawned to enumerate itself, but no payloads are ever fired).
 
 ```mermaid
 graph TB
@@ -47,11 +47,13 @@ The transport layer handles all communication with the target MCP server. It is 
 3. **Request/Response**: Implements request-response correlation via incrementing `id` fields on JSON-RPC 2.0 request envelopes. Notification-shaped messages (`method` present, no `id`) are rejected as invalid responses.
 4. **Error Handling**: Raises `ConnectionError` when the server process exits, closes its stdout, or returns a notification-shaped message. Raises `RuntimeError` on MCP-level errors. Raises `TimeoutError` when no response arrives within the configured timeout.
 5. **Resource Management**: Supports context-manager protocol (`with` statement) for clean startup/shutdown. Terminates the process gracefully on exit, with a fallback to `kill()` if termination times out.
+6. **Concurrency**: Strictly serial. `_read_response` spawns one reader thread per request (threading + queue) so a hung server cannot block the timeout; there is no request pipelining, and a timeout kills the server process outright.
 
 **Interface:**
 
 ```python
 class StdioTransport:
+    def __init__(self, command: list[str], timeout: float = 10.0) -> None: ...
     def start(self) -> None: ...
     def stop(self) -> None: ...
     def __enter__(self) -> StdioTransport: ...
@@ -98,7 +100,7 @@ sequenceDiagram
         E-->>C: list[FuzzResult]
     end
 
-    C->>R: FuzzReport(tools_fuzzed, total_payloads, results)
+    C->>R: FuzzReport(server_command, tools_fuzzed, total_payloads, results)
     R-->>C: formatted report (table / json / sarif)
 
     C->>T: stop()
@@ -142,9 +144,13 @@ flowchart TD
 | Integer / number parameter | 9 |
 | No input schema | 24 |
 
+Tools with no input schema are fuzzed with the shell + SSRF + first-two-overflow + prompt-injection suites; each payload is fired with its `rule_id` (e.g. `"shell-injection"`) as the argument name, since there is no schema parameter to bind to.
+
+**Post-crash behavior:** the engine does not stop when the server dies. Every remaining payload then raises `ConnectionError("Server not running")` in `_send` and is recorded as a CRASH — one real crash can therefore manufacture phantom CRASH findings for all unfired payloads, inflating the crash count and forcing exit code 2.
+
 ### Response Classification
 
-`_classify_response` maps a tool call's outcome to a category plus an evidence-graded severity. The deliberate default is **FINDING, never SAFE**: for a pre-deployment security fuzzer, a silently-executed payload is observationally identical to a neutralized one, and resolving that ambiguity as SAFE would let a CLEAN verdict assert safety it cannot verify.
+`_classify_response` maps a tool call's outcome to a category plus an evidence-graded severity. The deliberate default is **FINDING, never SAFE**: for a pre-deployment security fuzzer, a silently-executed payload is observationally identical to a neutralized one, and resolving that ambiguity as SAFE would let a CLEAN verdict assert safety it cannot verify. The operational cost is honest: a full fuzz run reports an info-level FINDING for every payload that produced no observable effect, so triage at scale means filtering by severity and rule id, not reading every row.
 
 | Outcome | Category | Severity | Rule ID pattern |
 |---------|----------|----------|-----------------|
@@ -156,6 +162,8 @@ flowchart TD
 | Payload produced no observable effect — not reflected, no error, no leak. Silent execution cannot be ruled out by black-box probing alone | FINDING | info | `{payload.rule_id}-no-observable-effect` |
 | `ConnectionError` raised during `call_tool` — the server process died or closed the connection | CRASH | payload's severity | payload's `rule_id` |
 | Any other exception during delivery | ERROR | payload's severity | payload's `rule_id` |
+
+**Check order matters:** the canary check runs before the exfil-channel check. Because the exfil payload itself embeds `INDIRECT_CANARY`, a server that echoes the payload verbatim produces `reflection-untrusted-echo`, not `indirect-injection-exfil-channel` — the latter fires only when the server strips the canary but keeps the markdown-image exfil channel.
 
 ---
 
@@ -205,7 +213,7 @@ sequenceDiagram
     loop for each tool
         C->>K: scan_tool(tool)
         K->>K: _check_shell_injection(name, desc, properties)
-        K->>K: _check_ssrf(properties)
+        K->>K: _check_ssrf(name, desc, properties)
         K->>K: _check_missing_schema(schema)
         K-->>C: list[ScanResult]
         C->>C: log [SEVERITY] tool: message / [PASS]
@@ -241,11 +249,11 @@ Includes a `summary` block and a `results` array. SAFE results are excluded from
 
 ### SARIF Output
 
-Maps each non-SAFE result to a SARIF `result` object with `ruleId`, `level` (`error` for crashes, `warning` for findings), `message`, and `physicalLocation` (`mcp://{tool_name}`).
+Maps each non-SAFE result to a SARIF `result` object with `ruleId`, `level` (`error` for crashes, `warning` for every other non-SAFE result), `message`, and a location of `physicalLocation.artifactLocation.uri = mcp://{tool_name}`.
 
 ### Provenance and count verification
 
-Every emitted report carries a `_provenance` block (scanner identity, scanner version, run id, UTC timestamp, data source, payload-ruleset version), so a downstream consumer can answer "where did this number come from?" without trusting the channel the report arrived on. Every summary number is recomputed from the raw results list by `verify_counts()`; the formatters refuse to emit a report whose summary disagrees with its results — numbers are derived in code, never narrated.
+Every emitted report carries a `_provenance` block (scanner identity, scanner version, run id, UTC timestamp, data source, payload-ruleset version), so a downstream consumer can answer "where did this number come from?" without trusting the channel the report arrived on. Category counts, `total_payloads`, and `tools_fuzzed` are recomputed from the raw results list by `verify_counts()`; the formatters refuse to emit a report whose summary disagrees with its results — they raise an exception (surfacing as exit code 1) instead of printing numbers that cannot be re-derived in code.
 
 ---
 
@@ -324,9 +332,13 @@ mcp-guard has **zero runtime dependencies**. It uses only Python 3.11+ stdlib mo
 
 - `json` — JSON-RPC message encoding/decoding
 - `subprocess` — server process spawn and lifecycle
+- `threading`, `queue` — per-request reader threads with timeout in the transport
+- `re` — exfil-channel pattern matching in the response classifier
 - `dataclasses` — result and payload data structures
 - `enum` — severity and category enums
 - `argparse` — CLI argument parsing
+- `sys` — exit codes
+- `uuid`, `datetime` — report run ids and timestamps
 - `typing` — type hints and Protocol definitions
 
 Dev dependencies (`pytest`, `pytest-cov`, `ruff`, `mypy`, `pyyaml`) are optional and only needed for development.

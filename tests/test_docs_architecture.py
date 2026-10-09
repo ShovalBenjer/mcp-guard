@@ -5,10 +5,12 @@ with the code. The first version (PR #21) covered the five sections, but
 several descriptions drifted from the implementation: the classifier gained
 canary-reflection, exfil-channel and evidence-graded default findings, and the
 issue explicitly demands sequence diagrams for handshake, fuzz AND scan. These
-tests fail CI on any doc/code divergence — the doc is verified in both
-directions: numbers in the doc must equal the live generators, and mechanisms
-in the code must be described in the doc. Tests assert equality between code
-and doc; they hold no independent literals for anything the code owns.
+tests fail CI on any doc/code divergence — the doc is verified against the
+code in both directions for everything the code owns (counts via live
+generators and, for the no-schema case, via a stub-transport fuzz_tool run;
+rule ids via scanner.py AST; CLI flags via cli.py AST; dataclass fields).
+The literals 29/37/9/24 are the doc's own table values, asserted equal to the
+code — never the other way round.
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ from pathlib import Path
 import pytest
 
 from mcp_guard import payloads
+from mcp_guard.fuzzer import FuzzEngine
 from mcp_guard.payloads import generate_all_for_param
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -43,6 +46,13 @@ def _sequence_diagrams(text: str) -> list[str]:
 
 def _source(name: str) -> str:
     return (SRC / name).read_text(encoding="utf-8")
+
+
+class _NullTransport:
+    """Stub transport: accepts every payload, leaks nothing."""
+
+    def call_tool(self, tool_name: str, arguments: dict) -> dict:
+        return {"content": [{"type": "text", "text": "ok"}]}
 
 
 # --- Issue #23's demanded sections -------------------------------------------
@@ -94,13 +104,11 @@ def test_payload_counts_match_live_generators() -> None:
     assert table["Integer / number parameter"] == len(
         generate_all_for_param("n", {"type": "integer"})
     ) == 9
-    no_schema = (
-        payloads.generate_shell_injection()
-        + payloads.generate_ssrf()
-        + payloads.generate_overflow()[:2]
-        + payloads.generate_prompt_injection()
-    )
-    assert table["No input schema"] == len(no_schema) == 24
+    # No-schema: through the real firing path, not a re-typed formula — a
+    # composition change in _fuzz_no_schema must break this test.
+    assert table["No input schema"] == len(
+        FuzzEngine(transport=_NullTransport()).fuzz_tool({"name": "t"})
+    ) == 24
 
 
 # --- Transport facts -----------------------------------------------------------
