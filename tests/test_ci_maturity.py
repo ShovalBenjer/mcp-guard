@@ -101,8 +101,10 @@ def test_mypy_strict_gate(jobs: dict) -> None:
 
 def test_ruff_lint_and_format_gates(jobs: dict) -> None:
     run = _run_lines(jobs["test"])
-    assert "ruff check" in run, "CI must run ruff check"
-    assert "ruff format --check" in run, "CI must run ruff format --check"
+    assert "ruff check src/ tests/" in run, "CI must run ruff check on src/ and tests/"
+    assert "ruff format --check src/ tests/" in run, (
+        "CI must run ruff format --check on src/ and tests/"
+    )
 
 
 # --- security gates --------------------------------------------------------
