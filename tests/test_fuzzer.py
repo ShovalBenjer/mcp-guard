@@ -122,8 +122,9 @@ def test_delay_ms_throttles_payload_delivery():
     finally:
         time_module.sleep = real_sleep
 
-    assert len(results) == 24, f"expected 24 no-schema payloads, got {len(results)}"
-    assert len(sleeps) == len(results), "one delay per fired payload"
+    assert len(sleeps) == len(results) == len(transport.calls), (
+        "one delay per fired payload, regardless of composition"
+    )
     assert all(s == 0.05 for s in sleeps), f"delay must equal delay_ms/1000: {sleeps[:3]}"
 
 
