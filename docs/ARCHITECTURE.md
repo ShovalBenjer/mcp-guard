@@ -43,9 +43,9 @@ The transport layer handles all communication with the target MCP server. It is 
 **Key responsibilities:**
 
 1. **Process Spawn**: Launches the server command with `subprocess.Popen`, piping stdin/stdout/stderr.
-2. **Handshake**: Sends an `initialize` request with protocol version `2024-11-05` and client info (`mcp-guard`, `0.2.0`), then sends `notifications/initialized`.
-3. **Request/Response**: Implements request-response correlation via incrementing `jsonrpc` `id` fields. Filters out server notifications (messages with `method` but no `id`).
-4. **Error Handling**: Raises `ConnectionError` when the server process exits or closes its stdout. Raises `RuntimeError` on MCP-level errors.
+2. **Handshake**: Sends an `initialize` request with protocol version `2024-11-05` and client info (`mcp-guard`, `0.2.1`), then sends `notifications/initialized`.
+3. **Request/Response**: Implements request-response correlation via incrementing `id` fields on JSON-RPC 2.0 request envelopes. Notification-shaped messages (`method` present, no `id`) are rejected as invalid responses.
+4. **Error Handling**: Raises `ConnectionError` when the server process exits, closes its stdout, or returns a notification-shaped message. Raises `RuntimeError` on MCP-level errors. Raises `TimeoutError` when no response arrives within the configured timeout.
 5. **Resource Management**: Supports context-manager protocol (`with` statement) for clean startup/shutdown. Terminates the process gracefully on exit, with a fallback to `kill()` if termination times out.
 
 **Interface:**
@@ -123,7 +123,7 @@ flowchart TD
     D --> E{is URI param?}
     E -->|Yes| F[generate_ssrf]
     D --> G{param type?}
-    G -->|string| H[shell + prompt + overflow3 + type_confusion_string]
+    G -->|string| H[shell + prompt + indirect + overflow3 + type_confusion_string]
     G -->|integer/number| I[type_confusion_integer + overflow_maxint]
     H --> J[fire payload]
     I --> J
@@ -137,8 +137,8 @@ flowchart TD
 
 | Input Type | Payloads |
 |------------|----------|
-| String parameter | 25 |
-| URI-typed string parameter | 33 |
+| String parameter | 29 |
+| URI-typed string parameter | 37 |
 | Integer / number parameter | 9 |
 | No input schema | 24 |
 
@@ -256,7 +256,7 @@ class FuzzResult:
 @dataclass
 class ScanResult:
     rule_id: str
-    severity: Severity          # CRITICAL | WARNING | INFO
+    severity: Severity          # CRITICAL | WARNING
     message: str
     tool_name: str
     remediation: str
