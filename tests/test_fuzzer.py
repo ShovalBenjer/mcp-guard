@@ -103,3 +103,46 @@ def test_fuzz_result_has_reproduction_info():
         assert r.tool_name == "test"
         assert hasattr(r, "payload_value")
         assert r.probe_name != ""
+
+
+def test_delay_ms_throttles_payload_delivery():
+    """--delay-ms was accepted and stored but never slept (dead flag).
+    Every fired payload must pause for the configured delay."""
+    import time as time_module
+
+    sleeps: list[float] = []
+    transport = FakeTransport()
+    engine = FuzzEngine(transport=transport, delay_ms=50)
+
+    tool = {"name": "slow", "inputSchema": {}}
+    real_sleep = time_module.sleep
+    try:
+        time_module.sleep = sleeps.append  # type: ignore[method-assign]
+        results = engine.fuzz_tool(tool)
+    finally:
+        time_module.sleep = real_sleep
+
+    assert len(sleeps) == len(results) == len(transport.calls), (
+        "one delay per fired payload, regardless of composition"
+    )
+    assert all(s == 0.05 for s in sleeps), f"delay must equal delay_ms/1000: {sleeps[:3]}"
+
+
+def test_delay_ms_zero_means_no_sleep():
+    """Default delay_ms=0 must not sleep at all."""
+    import time as time_module
+
+    transport = FakeTransport()
+    engine = FuzzEngine(transport=transport)
+    real_sleep = time_module.sleep
+    slept = False
+    try:
+        def _spy(s: float) -> None:
+            nonlocal slept
+            slept = True
+
+        time_module.sleep = _spy  # type: ignore[method-assign]
+        engine.fuzz_tool({"name": "fast", "inputSchema": {}})
+    finally:
+        time_module.sleep = real_sleep
+    assert not slept, "delay_ms=0 must never sleep"

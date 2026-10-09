@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
@@ -100,6 +101,8 @@ class FuzzEngine:
         self, tool_name: str, param_name: str, payload: Payload, required: set[str]
     ) -> FuzzResult:
         args: dict[str, Any] = {param_name: payload.value}
+        if self._delay_ms > 0:
+            time.sleep(self._delay_ms / 1000.0)
         try:
             response = self._transport.call_tool(tool_name, args)
         except ConnectionError:
