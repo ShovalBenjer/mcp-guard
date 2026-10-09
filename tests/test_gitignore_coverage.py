@@ -68,6 +68,8 @@ MUST_BE_IGNORED = [
     "reports/junit.xml",
     "test-results/report.xml",
     "coverage/lcov.info",
+    # SBOM (release.yml writes ./sbom.spdx.json; release workflow landed after #15/#21)
+    "sbom.spdx.json",
 ]
 
 # Real source files that must never be swallowed by an over-broad pattern.
