@@ -148,7 +148,7 @@ Targets: parameter type mismatches.
 | 4 | `None` | `None` | HIGH | Null value |
 | 5 | `True` | `True` | MEDIUM | Boolean for string param |
 | 6 | `False` | `False` | MEDIUM | Boolean false |
-| 7 | `["array", "value"]` | `[1, 2, 3]` | HIGH | Array for param type |
+| 7 | `["array", "value"]` | `[1, 2, 3]` | HIGH (string param) / MEDIUM (integer param) | Array for param type |
 | 8 | `{"nested": "object"}` | `"not_a_number"` | HIGH | Object / String for param type |
 
 ### Prompt Injection (`prompt_injection`)
