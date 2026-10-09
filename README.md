@@ -10,7 +10,6 @@
 **Adversarial fuzzer for MCP servers. Break them before they break you.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/ShovalBenjer/mcp-guard/ci.yml?branch=main&style=for-the-badge)](https://github.com/ShovalBenjer/mcp-guard/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/mcp-guard?style=for-the-badge)](https://pypi.org/project/mcp-guard/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-yellow?style=for-the-badge)](LICENSE)
 [![Findings](https://img.shields.io/badge/findings-critical-ff3366?style=for-the-badge)](LEADERBOARD.md)
@@ -198,6 +197,7 @@ Zero external dependencies. Python 3.11+ stdlib only.
 - [ ] MCP server security leaderboard (community submissions)
 - [ ] Custom payloads via YAML config
 - [ ] GitHub Action (fuzz on every PR)
+- [ ] PyPI release (publishing is automated by release.yml once the one-time trusted-publisher registration is done on pypi.org)
 - [ ] Diff mode: compare fuzz results between server versions
 
 ## Methodology
