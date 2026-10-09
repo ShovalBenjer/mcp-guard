@@ -35,6 +35,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 CANARY_PREFIX = "mcpguard-canary-"
 
@@ -100,7 +101,9 @@ class CanaryTrap:
         marked = text + f"\n[{canary.token}]"
         return marked, canary
 
-    def smuggle_tool_result(self, result: dict, source: str) -> tuple[dict, list[Canary]]:
+    def smuggle_tool_result(
+        self, result: dict[str, Any], source: str
+    ) -> tuple[dict[str, Any], list[Canary]]:
         """Mark every text block of an MCP tool result with its own canary.
 
         Non-text blocks are left untouched. Returns the marked result (a

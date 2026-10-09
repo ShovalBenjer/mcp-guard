@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 
 class Severity(Enum):
@@ -62,7 +63,7 @@ _ENV_KEYWORDS = frozenset(
 
 
 class Scanner:
-    def scan_tool(self, tool: dict) -> list[ScanResult]:
+    def scan_tool(self, tool: dict[str, Any]) -> list[ScanResult]:
         findings: list[ScanResult] = []
         name = tool.get("name", "").lower()
         desc = tool.get("description", "").lower()
@@ -75,7 +76,9 @@ class Scanner:
 
         return findings
 
-    def _check_shell_injection(self, name: str, desc: str, properties: dict) -> list[ScanResult]:
+    def _check_shell_injection(
+        self, name: str, desc: str, properties: dict[str, Any]
+    ) -> list[ScanResult]:
         results: list[ScanResult] = []
         tool_ref = name or "unknown"
 
@@ -111,7 +114,7 @@ class Scanner:
 
         return results
 
-    def _check_ssrf(self, name: str, desc: str, properties: dict) -> list[ScanResult]:
+    def _check_ssrf(self, name: str, desc: str, properties: dict[str, Any]) -> list[ScanResult]:
         results: list[ScanResult] = []
         tool_ref = name or "unknown"
 
@@ -137,7 +140,7 @@ class Scanner:
 
         return results
 
-    def _check_missing_schema(self, schema: dict) -> list[ScanResult]:
+    def _check_missing_schema(self, schema: dict[str, Any]) -> list[ScanResult]:
         if not schema or "properties" not in schema:
             return [
                 ScanResult(

@@ -19,7 +19,7 @@ import sys
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TextIO
+from typing import Any, TextIO
 
 from .fuzzer import FuzzResult, ResultCategory
 from .payloads import PAYLOAD_SET_VERSION
@@ -196,8 +196,8 @@ class FuzzReport:
         self.verify_counts()
         out = out or sys.stdout
         rules_map: dict[str, int] = {}
-        rules_list: list[dict] = []
-        results_sarif: list[dict] = []
+        rules_list: list[dict[str, Any]] = []
+        results_sarif: list[dict[str, Any]] = []
 
         for r in self.results:
             if r.category == ResultCategory.SAFE:

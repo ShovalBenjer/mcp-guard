@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 # Canary embedded in every indirect-injection probe. The fuzzer looks for this
 # token in tool *outputs*: its presence proves the server reflected
@@ -216,7 +217,7 @@ def generate_indirect_injection() -> list[Payload]:
     ]
 
 
-def generate_all_for_param(param_name: str, param_schema: dict) -> list[Payload]:
+def generate_all_for_param(param_name: str, param_schema: dict[str, Any]) -> list[Payload]:
     """Generate targeted payloads based on parameter type."""
     ptype = param_schema.get("type", "string").lower()
     fmt = param_schema.get("format", "").lower()
