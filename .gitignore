@@ -12,6 +12,12 @@ build/
 *.manifest
 *.spec
 
+# pip build isolation + PEP 582
+lib/
+lib64/
+__pypackages__/
+.python-version
+
 # Virtual environments
 .env
 .venv/
@@ -43,6 +49,7 @@ coverage.xml
 # IDE
 .idea/
 .vscode/
+.history/
 *.swp
 *.swo
 .project
@@ -64,6 +71,7 @@ yarn.lock
 # OS artifacts
 .DS_Store
 Thumbs.db
+desktop.ini
 *.lnk
 *.tmp
 *.temp
@@ -93,6 +101,12 @@ pip-delete-this-directory.txt
 # Documentation
 docs/_build/
 site/
+
+# CI artifacts
+junit.xml
+*.junit.xml
+test-results/
+coverage/
 
 # Secrets
 *.pem
