@@ -90,16 +90,16 @@ jobs:
         with:
           enable-cache: true
       - name: Install project and SBOM tool
+        # The SBOM must describe mcp-guard's actual dependency tree: install
+        # the project first, otherwise `cyclonedx-py environment` would emit
+        # an SBOM of the bare runner interpreter instead.
+        run: |
+          uv pip install -e ".[dev]" --system
+          uv pip install cyclonedx-bom --system
       - name: Generate CycloneDX SBOM
         run: cyclonedx-py environment --of JSON -o sbom.cdx.json --pyproject pyproject.toml
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v7
-        with:
-          name: sbom-cyclonedx
-          path: sbom.cdx.json
-        run: cyclonedx-py environment --of JSON -o sbom.cdx.json --pyproject pyproject.toml
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
         with:
           name: sbom-cyclonedx
           path: sbom.cdx.json
